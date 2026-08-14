@@ -1,3 +1,4 @@
+import { desc, sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -31,8 +32,10 @@ export const companies = sqliteTable(
   },
   (table) => [
     uniqueIndex("companies_slug_uq").on(table.slug),
-    index("companies_ats_active_idx").on(table.atsType, table.active),
-    index("companies_blocked_idx").on(table.blocked),
+    index("companies_ats_active_idx")
+      .on(table.atsType, table.active)
+      .where(sql`active`),
+    index("companies_blocked_idx").on(table.blocked).where(sql`blocked`),
   ],
 );
 
@@ -74,9 +77,12 @@ export const jobs = sqliteTable(
   },
   (table) => [
     uniqueIndex("jobs_source_source_id_uq").on(table.source, table.sourceId),
-    index("jobs_company_posted_idx").on(table.companyId, table.postedAt),
+    index("jobs_company_posted_idx").on(
+      table.companyId,
+      desc(table.postedAt),
+    ),
     index("jobs_content_hash_idx").on(table.contentHash),
-    index("jobs_closed_idx").on(table.closedAt),
+    index("jobs_closed_idx").on(table.closedAt).where(sql`closed_at IS NULL`),
     index("jobs_last_seen_idx").on(table.lastSeenAt),
     index("jobs_canonical_idx").on(table.canonicalId),
   ],
