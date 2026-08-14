@@ -4,3 +4,4 @@ export type {
   SourceCompany,
   SourceFetchConfig,
 } from "./_contract";
+export { htmlToText, normalizeTitle } from "./normalize";
