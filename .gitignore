@@ -15,5 +15,11 @@ data/
 out/resumes/
 *.pdf
 
+# personal data — never commit. This repo is public.
+profile.json
+profile.*.json
+*.resume.json
+config/companies.local.*
+
 .DS_Store
 .claude/settings.local.json
