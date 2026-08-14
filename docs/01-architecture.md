@@ -88,9 +88,18 @@ Two loops are what make the system improve rather than just aggregate:
 
 ```
 fetch(config)      → RawPosting[]     // network, retries, rate limit
-normalize(raw)     → Job              // pure, no I/O, unit-testable
+normalize(raw)     → NormalizedPosting // pure, no I/O, unit-testable
 sourceId(raw)      → string           // stable per-source unique id
 ```
+
+`NormalizedPosting` is the source-owned part of a canonical job: the URL,
+title, normalized title, sanitized description, and source-supplied metadata.
+Ingest combines it with the known company and registered adapter to add
+`company_id`, `source`, `source_id`, observation timestamps, the content hash,
+and deduplication links. It computes `content_hash` from `title_norm`, the
+company slug, and the description with the shared helper. Enrich alone writes
+`description_fts` and `extraction_tier`; the staleness sweep alone writes
+`closed_at`.
 
 `normalize` being pure and I/O-free is the rule that keeps ingest testable against recorded fixtures.
 
