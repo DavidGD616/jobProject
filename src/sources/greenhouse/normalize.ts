@@ -1,6 +1,6 @@
 import type { NormalizedPosting } from "@/sources";
 
-import { htmlToText, normalizeTitle } from "../normalize";
+import { htmlToText, normalizeRemoteType, normalizeTitle } from "../normalize";
 import type { GreenhouseJob } from "./schema";
 
 function parseDate(value: string | null | undefined): Date | null {
@@ -13,12 +13,15 @@ function parseDate(value: string | null | undefined): Date | null {
 export function normalize(
   raw: Readonly<GreenhouseJob>,
 ): NormalizedPosting {
+  const location = raw.location?.name.trim() || null;
+
   return {
     url: raw.absolute_url,
     title: raw.title.trim(),
     titleNorm: normalizeTitle(raw.title),
     description: htmlToText(raw.content ?? ""),
-    location: raw.location?.name.trim() || null,
+    location,
+    remoteType: normalizeRemoteType(location),
     postedAt: parseDate(raw.first_published),
   };
 }

@@ -1,6 +1,6 @@
 # 05 — Roadmap
 
-**Status:** Draft · **Last updated:** 2026-08-13
+**Status:** Draft · **Last updated:** 2026-08-14
 
 Each phase ships something usable. Do not start a phase before the previous one's exit criteria are met.
 
@@ -16,13 +16,13 @@ All ten ADRs accepted. Stack and policy settled:
 - **Local Playwright**, agent-generated selectors cached per site ([ADR-0009](adr/0009-local-browser-automation.md))
 - **Company list is discovered**, not curated ([ADR-0010](adr/0010-company-discovery.md))
 
-## Phase 1 — Ingest pipeline
+## Phase 1 — Ingest pipeline 🚧 in progress
 
 The one that proves the whole thing works. Tier A of [00-vision](00-vision.md).
 
-- Repo scaffold (pnpm), DB schema, migrations
+- ✅ Repo scaffold (pnpm), DB schema, migrations
 - **Discovery: bulk probe.** Candidate slugs → ATS endpoints → keep the 200s
-- Source contract + adapters for Greenhouse, Lever, Ashby
+- Source contract + adapters for Greenhouse, Lever, Ashby — Greenhouse ✅; Lever and Ashby pending
 - Heuristic extraction at ingest — regex salary, title seniority, remote keywords
 - Dedup layers 1 and 2
 - Scheduled fetch + `last_seen_at` / `closed_at` staleness sweep

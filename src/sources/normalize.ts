@@ -1,5 +1,7 @@
 import { decodeHTML } from "entities";
 
+export type RemoteType = "onsite" | "hybrid" | "remote" | "unknown";
+
 /**
  * Turn the HTML/entity-encoded descriptions returned by ATS APIs into the
  * plain text stored in jobs.description. This intentionally preserves line
@@ -20,6 +22,22 @@ export function htmlToText(input: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
+}
+
+/**
+ * Location is source-owned metadata. Preserve an explicit Remote/Hybrid/
+ * On-site signal here so the stage-one filters do not have to rediscover it
+ * from the description.
+ */
+export function normalizeRemoteType(
+  location: string | null | undefined,
+): RemoteType {
+  const value = location?.trim().toLowerCase();
+  if (!value) return "unknown";
+  if (/\bhybrid\b/.test(value)) return "hybrid";
+  if (/\bremote\b/.test(value)) return "remote";
+  if (/\b(?:on[- ]?site|in[- ]?office)\b/.test(value)) return "onsite";
+  return "unknown";
 }
 
 /**
