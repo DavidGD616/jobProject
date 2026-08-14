@@ -19,9 +19,11 @@ export interface SourceFetchConfig {
 }
 
 /**
- * The canonical posting payload produced by normalize(). Ingest adds the
- * adapter name, stable source ID, company ID, timestamps, content hash, and
- * deduplication links before inserting a row into jobs.
+ * The source-owned portion of a canonical posting produced by normalize().
+ * Ingest adds the registered adapter name, stable source ID, company ID,
+ * observation timestamps, content hash, and deduplication links before
+ * inserting a row into jobs. Enrichment owns the indexed description and
+ * extraction tier; the staleness sweep owns closedAt.
  */
 export type NormalizedPosting = Omit<
   NewJob,
@@ -29,8 +31,11 @@ export type NormalizedPosting = Omit<
   | "companyId"
   | "source"
   | "sourceId"
+  | "descriptionFts"
+  | "extractionTier"
   | "firstSeenAt"
   | "lastSeenAt"
+  | "closedAt"
   | "contentHash"
   | "canonicalId"
 >;
@@ -43,21 +48,12 @@ export interface SourceAdapter<
   TRawPosting,
   TConfig extends SourceFetchConfig = SourceFetchConfig,
 > {
-  /** Stable adapter name stored in jobs.source. */
-  readonly source: string;
-
   /** Network boundary: fetch raw postings with source-specific I/O policy. */
   fetch(config: TConfig): Promise<TRawPosting[]>;
 
   /** Pure mapping boundary: raw source object to the canonical posting shape. */
-  normalize(raw: TRawPosting): NormalizedPosting;
+  normalize(raw: Readonly<TRawPosting>): NormalizedPosting;
 
   /** Stable identifier supplied by the upstream source, never a description hash. */
-  sourceId(raw: TRawPosting): string;
+  sourceId(raw: Readonly<TRawPosting>): string;
 }
-
-/** The function-only view used by modules that register named adapters separately. */
-export type SourceAdapterFunctions<
-  TRawPosting,
-  TConfig extends SourceFetchConfig = SourceFetchConfig,
-> = Pick<SourceAdapter<TRawPosting, TConfig>, "fetch" | "normalize" | "sourceId">;

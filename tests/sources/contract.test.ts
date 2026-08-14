@@ -15,8 +15,6 @@ type FixturePosting = {
 };
 
 const fixtureAdapter: SourceAdapter<FixturePosting> = {
-  source: "fixture",
-
   async fetch(config: SourceFetchConfig): Promise<FixturePosting[]> {
     void config;
     return [
@@ -29,7 +27,7 @@ const fixtureAdapter: SourceAdapter<FixturePosting> = {
     ];
   },
 
-  normalize(raw: FixturePosting): NormalizedPosting {
+  normalize(raw: Readonly<FixturePosting>): NormalizedPosting {
     return {
       url: raw.url,
       title: raw.title,
@@ -38,7 +36,7 @@ const fixtureAdapter: SourceAdapter<FixturePosting> = {
     };
   },
 
-  sourceId(raw: FixturePosting): string {
+  sourceId(raw: Readonly<FixturePosting>): string {
     return String(raw.id);
   },
 };
@@ -91,5 +89,8 @@ test("sourceId is stable and separate from content", () => {
   };
 
   assert.equal(fixtureAdapter.sourceId(raw), "42");
-  assert.equal(fixtureAdapter.sourceId({ ...raw, htmlDescription: "<p>Updated</p>" }), "42");
+  assert.equal(
+    fixtureAdapter.sourceId({ ...raw, htmlDescription: "<p>Updated</p>" }),
+    "42",
+  );
 });

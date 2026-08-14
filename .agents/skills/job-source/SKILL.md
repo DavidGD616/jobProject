@@ -29,9 +29,13 @@ Every adapter lives in `src/sources/{name}/` and exports the same three function
 
 ```ts
 fetch(config)   → Promise<RawPosting[]>   // network. retries, backoff, rate limit
-normalize(raw)  → Job                     // PURE. no I/O, no clock, no randomness
+normalize(raw)  → NormalizedPosting       // PURE. no I/O, no clock, no randomness
 sourceId(raw)   → string                  // stable unique id within this source
 ```
+
+`NormalizedPosting` contains only source-owned job fields. Ingest adds company,
+source, identifiers, timestamps, the content hash, and deduplication state;
+enrich and the staleness sweep own their later-stage fields.
 
 `normalize` must stay pure — that is what makes it testable against recorded fixtures. Anything needing I/O belongs in `fetch` or in `enrich`.
 
@@ -47,7 +51,7 @@ sourceId(raw)   → string                  // stable unique id within this sour
 1. **Probe the endpoint** with curl. Confirm shape, pagination, and whether descriptions come as HTML.
 2. **Record a fixture** — one real response into `tests/fixtures/{source}/`. Commit it. Trim to a few representative postings; keep at least one weird one (missing salary, odd location, empty department).
 3. **Implement `fetch`** — timeout, retry with exponential backoff on 429/5xx, per-source concurrency cap of 1–2, descriptive `User-Agent` with a contact address. Conditional requests where the API supports them.
-4. **Implement `normalize`** — map to the canonical `Job` in [docs/02-data-model.md](../../../docs/02-data-model.md). Sanitize HTML to text. Compute `title_norm` and `content_hash` with the shared helpers; do not reimplement them per source.
+4. **Implement `normalize`** — map to the source-owned portion of the canonical `Job` in [docs/02-data-model.md](../../../docs/02-data-model.md). Sanitize HTML to text and compute `title_norm` with the shared helper. Ingest computes `content_hash` after pairing the normalized posting with the company slug; do not reimplement either transformation per source.
 5. **Test `normalize` against the fixture** — assert required fields are present and correctly typed. Do not snapshot the whole object; that test fails on every unrelated change and teaches you nothing.
 6. **Register** in source config with its cadence and rate limit.
 7. **Document quirks** in the per-source section of `docs/03-sources.md`. That section is the reason the doc exists.
