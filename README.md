@@ -23,4 +23,15 @@ pnpm typecheck
 pnpm build
 ```
 
+## Database
+
+The local SQLite database lives at `data/jobs.sqlite` and is created by the
+migrations. After changing `src/db/schema.ts`, generate and apply a new
+migration:
+
+```bash
+pnpm db:generate
+pnpm db:migrate
+```
+
 See [docs/README.md](docs/README.md) for the architecture and roadmap.
