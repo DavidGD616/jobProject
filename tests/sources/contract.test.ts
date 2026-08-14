@@ -5,6 +5,7 @@ import type {
   NormalizedPosting,
   SourceAdapter,
   SourceFetchConfig,
+  SourceFetchResult,
 } from "@/sources";
 
 type FixturePosting = {
@@ -15,16 +16,22 @@ type FixturePosting = {
 };
 
 const fixtureAdapter: SourceAdapter<FixturePosting> = {
-  async fetch(config: SourceFetchConfig): Promise<FixturePosting[]> {
+  async fetch(
+    config: SourceFetchConfig,
+  ): Promise<SourceFetchResult<FixturePosting>> {
     void config;
-    return [
-      {
-        id: 42,
-        title: "Software Engineer - Remote",
-        url: "https://example.test/jobs/42",
-        htmlDescription: "<p>Build useful things.</p>",
-      },
-    ];
+    return {
+      kind: "fetched",
+      etag: null,
+      postings: [
+        {
+          id: 42,
+          title: "Software Engineer - Remote",
+          url: "https://example.test/jobs/42",
+          htmlDescription: "<p>Build useful things.</p>",
+        },
+      ],
+    };
   },
 
   normalize(raw: Readonly<FixturePosting>): NormalizedPosting {
@@ -54,8 +61,10 @@ test("an adapter returns raw postings through fetch", async () => {
     timeoutMs: 5_000,
   });
 
-  assert.equal(postings.length, 1);
-  assert.equal(postings[0]?.id, 42);
+  assert.equal(postings.kind, "fetched");
+  if (postings.kind !== "fetched") assert.fail("expected a fetched result");
+  assert.equal(postings.postings.length, 1);
+  assert.equal(postings.postings[0]?.id, 42);
 });
 
 test("normalize is deterministic and does not mutate the raw posting", () => {

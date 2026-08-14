@@ -1,6 +1,6 @@
 # 03 — Sources
 
-**Status:** Draft · **Last updated:** 2026-08-13
+**Status:** Draft · **Last updated:** 2026-08-14
 **Policy:** [ADR-0005](adr/0005-source-selection-policy.md) (what is allowed) · [ADR-0009](adr/0009-local-browser-automation.md) (how rendered pages are read) · [ADR-0010](adr/0010-company-discovery.md) (how the company list is built)
 
 Two kinds of source, different contracts and different cadences:
@@ -95,4 +95,4 @@ Checklists live in the skills: `job-source` for postings, `discovery-source` for
 
 Append findings here as they surface — this section is the reason the doc exists.
 
-- _(none yet)_
+- **Greenhouse:** the public board endpoint is `GET /v1/boards/{token}/jobs?content=true`; descriptions arrive entity-encoded HTML and are decoded and reduced to plain text by the adapter. The list response includes `meta.total`, but the Job Board endpoint returns the board's current postings in one response rather than using the Harvest `page`/`per_page` pagination contract. It returns an `ETag`; the adapter sends it as `If-None-Match` on later polls and represents a 304 as `not_modified`, never an empty board. The registered Tier 1 policy runs every 6h, permits two concurrent board polls, spaces request starts by 500ms, and defers the source after a 429 for the full `Retry-After` delay.

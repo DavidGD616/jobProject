@@ -76,7 +76,7 @@ Two loops are what make the system improve rather than just aggregate:
 | Module | Input | Output | Runs |
 |---|---|---|---|
 | `discovery/*` | candidate names, URLs | rows in `companies` | weekly |
-| `sources/*` | company row | `RawPosting[]` | scheduled |
+| `sources/*` | company row + cached validator | `SourceFetchResult<RawPosting>` | scheduled |
 | `ingest` | `RawPosting[]` | rows in `jobs` | scheduled |
 | `enrich` | `Job` | heuristic fields + `description_fts` | queued, per new job. **no LLM** |
 | `match` | `Job[]`, `Profile` | rows in `matches` | queued, after enrich |
@@ -84,10 +84,10 @@ Two loops are what make the system improve rather than just aggregate:
 | `tailor` | `Job`, `Profile` | resume variant + cover letter draft | on demand |
 | `apply` | `Job`, artifacts | filled form, paused | on demand, interactive |
 
-**Source adapter contract** — every adapter exports the same shape so adding a source touches exactly one directory:
+**Source adapter contract** — every adapter exports the same shape; its registry entry supplies cadence and request policy:
 
 ```
-fetch(config)      → RawPosting[]     // network, retries, rate limit
+fetch(config)      → SourceFetchResult<RawPosting> // network, retries, rate limit
 normalize(raw)     → NormalizedPosting // pure, no I/O, unit-testable
 sourceId(raw)      → string           // stable per-source unique id
 ```
@@ -102,6 +102,11 @@ company slug, and the description with the shared helper. Enrich alone writes
 `closed_at`.
 
 `normalize` being pure and I/O-free is the rule that keeps ingest testable against recorded fixtures.
+
+`SourceFetchResult` distinguishes `{ kind: "fetched", postings, etag }` from
+`{ kind: "not_modified", etag }`. The scheduled poller persists each ETag by
+company and source, sends it on the next fetch, and skips ingest/staleness work
+on `not_modified`; an HTTP 304 must never look like a fetched empty board.
 
 Rendered career-page sources implement the same contract. Their `fetch` renders with local Playwright and applies cached selectors from `extraction_rules`; their `normalize` is identical in kind to an ATS adapter's ([ADR-0009](adr/0009-local-browser-automation.md)).
 
@@ -170,6 +175,8 @@ src/
     reverse-url.ts       apply URL → ATS token
     _contract.ts
   sources/               one dir per source, finds postings
+    registry.ts           source cadence, User-Agent, and request policy
+    rate-limit.ts         shared concurrency and request-start limiter
     greenhouse/          fetch.ts · normalize.ts · fixtures/
     lever/
     career-page/         Playwright render + cached selectors (ADR-0009)

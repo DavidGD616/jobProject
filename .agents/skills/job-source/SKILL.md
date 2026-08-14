@@ -28,7 +28,7 @@ For anything not on the permitted list, check its ToS and `robots.txt` before wr
 Every adapter lives in `src/sources/{name}/` and exports the same three functions:
 
 ```ts
-fetch(config)   → Promise<RawPosting[]>   // network. retries, backoff, rate limit
+fetch(config)   → Promise<SourceFetchResult<RawPosting>> // network. retries, backoff, rate limit
 normalize(raw)  → NormalizedPosting       // PURE. no I/O, no clock, no randomness
 sourceId(raw)   → string                  // stable unique id within this source
 ```
@@ -38,6 +38,12 @@ source, identifiers, timestamps, the content hash, and deduplication state;
 enrich and the staleness sweep own their later-stage fields.
 
 `normalize` must stay pure — that is what makes it testable against recorded fixtures. Anything needing I/O belongs in `fetch` or in `enrich`.
+
+When an API supports validators, `fetch` accepts the previously persisted ETag
+and returns either `{ kind: "fetched", postings, etag }` or
+`{ kind: "not_modified", etag }`. The poller persists validators by company and
+source and must skip ingest/staleness work for `not_modified`; a 304 is never
+an empty board.
 
 `sourceId` must be stable across runs. Prefer the source's own id. Never hash the description — descriptions get edited and the job would re-ingest as new.
 
