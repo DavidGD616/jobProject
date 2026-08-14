@@ -24,4 +24,4 @@ One file per decision. Numbered, immutable once `Accepted`.
 - `Proposed` means the decision is not made. Anything depending on it is blocked.
 - The interesting part is **Context** and **Consequences**, not the decision line. Record what was actually true at the time, including the constraints that will look obvious later.
 
-Use `template.md` for new records, or the `adr` skill (`.claude/skills/adr/`).
+Use `template.md` for new records, or the `adr` skill (`.agents/skills/adr/`).

@@ -2,6 +2,8 @@
 
 Planning and design docs for the job-hunt agent. Written before code on purpose.
 
+Agent instructions are in [AGENTS.md](../AGENTS.md) at the repo root — canonical for every tool. `CLAUDE.md` is a pointer to it.
+
 ## Read in order
 
 | Doc | Contains |

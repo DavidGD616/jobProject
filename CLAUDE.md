@@ -1,51 +1,7 @@
 # jobProject
 
-Local-only job-hunt agent: aggregate openings from official ATS boards and APIs, rank them against a structured profile, tailor applications, track the pipeline. LLM work runs through installed AI CLIs, not a hosted API.
+All project instructions live in [AGENTS.md](AGENTS.md), which is canonical for every coding agent.
 
-**Status:** planning. No code yet. Phase 0 done, Phase 1 next — see [docs/05-roadmap.md](docs/05-roadmap.md).
+@AGENTS.md
 
-**Stack:** TypeScript on Node 24 · pnpm · SQLite + FTS5 (WAL) · Next.js · Drizzle · Playwright · LLM via installed CLIs.
-
-## Read first
-
-- [docs/README.md](docs/README.md) — index of all planning docs
-- [docs/adr/](docs/adr/) — decisions, all accepted
-
-## Standing rules
-
-These come from accepted ADRs. Do not work around them.
-
-- **Never auto-submit an application.** Fill the form, stop, human clicks submit ([ADR-0004](docs/adr/0004-human-in-the-loop-submission.md))
-- **No scraping LinkedIn, Indeed, or Glassdoor.** Official APIs and public ATS boards only ([ADR-0005](docs/adr/0005-source-selection-policy.md))
-- **Everything runs locally.** No deploy, no hosted DB, bind to `127.0.0.1` only ([ADR-0006](docs/adr/0006-local-only-execution.md))
-- **No LLM API keys.** All LLM calls shell out to `claude`, `codex`, or `opencode` ([ADR-0007](docs/adr/0007-llm-via-cli-subprocess.md))
-- **No local model runtimes and no embeddings.** Retrieval is lexical + structured features ([ADR-0008](docs/adr/0008-no-embeddings-lexical-retrieval.md))
-- **Browser automation is local Playwright.** No cloud browser service. Agent writes selectors once, script replays them ([ADR-0009](docs/adr/0009-local-browser-automation.md))
-- **Never ask the user to name companies.** The list is discovered ([ADR-0010](docs/adr/0010-company-discovery.md))
-- **Never fabricate resume content.** Tailoring reorders and rephrases real facts from the profile; it does not invent them
-- **Record decisions as ADRs** ([ADR-0001](docs/adr/0001-record-architecture-decisions.md)) — use the `adr` skill
-
-## Conventions
-
-- **pnpm only.** Never `npm` or `yarn` — in docs, scripts, or instructions
-- `normalize` in every source adapter is pure and I/O-free, tested against a committed fixture
-- Every CLI invocation: tools disabled, empty temp `cwd`, hard timeout with kill, argv array not shell string
-- Cache every LLM result on `(task, prompt_hash, provider, model, prompt_version)` — at CLI latency this is load-bearing
-- Bump `prompt_version` when a prompt template changes, or stale cache hits silently corrupt results
-- Never crash a batch on a parse failure — record `parse_failed`, continue, retry next run
-- **Never LLM-enrich every job.** Heuristics at ingest; LLM extraction rides inside the stage 3 rerank call. Enriching all ~10k jobs is 27h per run
-- Zero rows from a career page is a failure signal, not an empty result
-- No LLM call in a request path. The worker writes, the UI reads, and every view renders with the result missing
-- Every external call: timeout, backoff, per-source rate limit. Per-provider concurrency cap 1–2
-- All DB access goes through `src/db/` so the engine stays swappable
-
-## Skills
-
-- `adr` — write, accept, or supersede a decision record
-- `job-source` — add or fix a job source adapter (finds postings)
-- `discovery-source` — add or fix a company discovery mechanism (finds companies)
-- `llm-provider` — add or fix an AI CLI provider adapter
-
-## Docs hygiene
-
-When a plan changes, update the doc in the same change. A stale doc is worse than no doc — it is the input to the next session.
+Do not add rules here. Add them to `AGENTS.md` — a second copy drifts, and the drift is silent.
