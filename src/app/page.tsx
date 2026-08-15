@@ -72,8 +72,8 @@ export default function Home() {
         </section>
 
         <footer className="border-t border-slate-200 pt-6 text-sm text-slate-500">
-          Scaffold, database schema, and Greenhouse source adapter are ready.
-          Next: discovery, scheduled ingest, and the local job list.
+          Scaffold, database schema, Greenhouse adapter, and bulk discovery probe
+          are ready. Next: scheduled ingest and the local job list.
         </footer>
       </div>
     </main>

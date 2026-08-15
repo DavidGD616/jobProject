@@ -1,0 +1,12 @@
+{
+  "jobs": [
+    {
+      "id": 101,
+      "title": "Software Engineer",
+      "updated_at": "2026-08-14T12:00:00Z"
+    }
+  ],
+  "meta": {
+    "total": 1
+  }
+}

@@ -21,7 +21,7 @@ All ten ADRs accepted. Stack and policy settled:
 The one that proves the whole thing works. Tier A of [00-vision](00-vision.md).
 
 - ✅ Repo scaffold (pnpm), DB schema, migrations
-- **Discovery: bulk probe.** Candidate slugs → ATS endpoints → keep the 200s
+- **Discovery: bulk probe ✅.** Candidate slugs → ATS endpoints → keep the 200s; the unattended 300-board exit run remains to be measured against a full candidate seed.
 - Source contract + adapters for Greenhouse, Lever, Ashby — Greenhouse ✅; Lever and Ashby pending
 - Heuristic extraction at ingest — regex salary, title seniority, remote keywords
 - Dedup layers 1 and 2
