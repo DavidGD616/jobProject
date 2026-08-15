@@ -21,7 +21,7 @@ All ten ADRs accepted. Stack and policy settled:
 The one that proves the whole thing works. Tier A of [00-vision](00-vision.md).
 
 - ✅ Repo scaffold (pnpm), DB schema, migrations
-- **Discovery: bulk probe ✅.** Candidate slugs → ATS endpoints → keep the 200s; the unattended 300-board exit run remains to be measured against a full candidate seed.
+- **Discovery: bulk probe + automatic seed ✅.** The latest 36 HN threads produce candidates from top-level listings with official ATS URLs and token-matched company headings, without a hand-maintained company list; a parser-only 2026-08 check yielded 424 unique ATS-hinted candidates. The probe verifies boards, caches misses, and stops safely after upstream failure signals. The unattended ≥300 live-board exit run remains to be measured.
 - Source contract + adapters for Greenhouse, Lever, Ashby — Greenhouse ✅; Lever and Ashby pending
 - Heuristic extraction at ingest — regex salary, title seniority, remote keywords
 - Dedup layers 1 and 2
@@ -59,7 +59,7 @@ Tier B. Depends on Phase 1.5.
 - LLM query expansion, cached per profile version
 - Ranked review UI with reasons and gaps, triage buttons, one-click `block_company`
 - Few-shot feedback from triage labels
-- Remaining discovery mechanisms: HN hiring, Adzuna query, reverse URL extraction
+- Remaining discovery work: richer HN prose parsing after the LLM harness, Adzuna query, reverse URL extraction
 - Career-page sources: Playwright render + agent-generated selectors ([ADR-0009](adr/0009-local-browser-automation.md))
 
 *Exit:* daily top-20 is good enough that you stop browsing raw listings. Precision@20 above ~50% by click-through, and known-good jobs reliably survive stage 2.

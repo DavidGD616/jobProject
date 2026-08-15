@@ -34,7 +34,9 @@ export type ProbeAttemptOutcome =
   | "not_found"
   | "cached_miss"
   | "invalid_payload"
-  | "failed";
+  | "failed"
+  /** The upstream host was paused after repeated retryable failures. */
+  | "paused";
 
 export interface ProbeAttempt {
   atsType: DiscoveryAtsType;

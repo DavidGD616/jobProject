@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { createSourceRequestLimiter, delay } from "../sources/rate-limit";
 import type { SourceRequestLimiter } from "../sources/rate-limit";
+import { fetchRobotsPolicy } from "../sources/robots";
+import type { RobotsPolicy } from "../sources/robots";
 import { createNegativeProbeCache } from "./cache";
 import type { NegativeProbeCache } from "./cache";
 import { discoveryProbeConfig } from "./config";
@@ -13,7 +15,7 @@ import type {
   VerifiedCompany,
 } from "./_contract";
 import { discoveryAtsTypes } from "./_contract";
-import { slugVariants } from "./slugify";
+import { companySlug, slugVariants } from "./slugify";
 
 const MAX_TIMEOUT_MS = 2_147_483_647;
 const GREENHOUSE_URL = "https://boards-api.greenhouse.io/v1/boards";
@@ -72,6 +74,7 @@ export interface DiscoveryProbeConfig {
   timeoutMs: number;
   maxAttempts: number;
   retryBaseDelayMs: number;
+  maxConsecutiveFailuresPerAts: number;
   maxConcurrentRequestsPerAts: number;
   minRequestIntervalMs: number;
   userAgent: string;
@@ -83,21 +86,8 @@ export interface DiscoveryProbeDependencies {
   now?: () => number;
   negativeCache?: NegativeProbeCache;
   limiters?: Partial<Record<DiscoveryAtsType, SourceRequestLimiter>>;
-}
-
-export class DiscoveryProbeError extends Error {
-  readonly status: number | undefined;
-  readonly url: string;
-
-  constructor(
-    message: string,
-    options: { url: string; status?: number; cause?: unknown },
-  ) {
-    super(message, { cause: options.cause });
-    this.name = "DiscoveryProbeError";
-    this.status = options.status;
-    this.url = options.url;
-  }
+  /** Injectable policy for deterministic tests or a pre-approved source. */
+  robotsPolicy?: RobotsPolicy;
 }
 
 function errorMessage(cause: unknown): string {
@@ -106,6 +96,14 @@ function errorMessage(cause: unknown): string {
 
 function retryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
+}
+
+function blockedStatus(status: number): boolean {
+  // These are not bad candidate tokens; they indicate that the public host is
+  // refusing this client or that access is legally unavailable. Retrying a
+  // seed after either response is exactly the behavior the limiter exists to
+  // prevent.
+  return status === 401 || status === 403 || status === 451;
 }
 
 function retryAfterMs(value: string | null, now: () => number): number | null {
@@ -155,6 +153,14 @@ function normalizedConfig(
     throw new RangeError("retryBaseDelayMs must be finite and non-negative");
   }
   if (
+    !Number.isInteger(config.maxConsecutiveFailuresPerAts) ||
+    config.maxConsecutiveFailuresPerAts < 1
+  ) {
+    throw new RangeError(
+      "maxConsecutiveFailuresPerAts must be a positive integer",
+    );
+  }
+  if (
     !Number.isInteger(config.maxConcurrentRequestsPerAts) ||
     config.maxConcurrentRequestsPerAts < 1
   ) {
@@ -188,6 +194,33 @@ function cacheKey(atsType: DiscoveryAtsType, token: string): string {
   return `${atsType}:${token}`;
 }
 
+interface AtsCircuit {
+  isOpen(): boolean;
+  pause(): void;
+  recordFailure(): boolean;
+  recordHealthyResponse(): void;
+}
+
+function createAtsCircuit(maxConsecutiveFailures: number): AtsCircuit {
+  let consecutiveFailures = 0;
+
+  return {
+    isOpen() {
+      return consecutiveFailures >= maxConsecutiveFailures;
+    },
+    pause() {
+      consecutiveFailures = maxConsecutiveFailures;
+    },
+    recordFailure() {
+      consecutiveFailures += 1;
+      return consecutiveFailures >= maxConsecutiveFailures;
+    },
+    recordHealthyResponse() {
+      consecutiveFailures = 0;
+    },
+  };
+}
+
 interface ProbeBoardOptions {
   atsType: DiscoveryAtsType;
   token: string;
@@ -195,6 +228,12 @@ interface ProbeBoardOptions {
   config: DiscoveryProbeConfig;
   dependencies: Required<Pick<DiscoveryProbeDependencies, "fetchImpl" | "sleep" | "now" | "negativeCache">> & {
     limiters: Record<DiscoveryAtsType, SourceRequestLimiter>;
+    circuits: Record<DiscoveryAtsType, AtsCircuit>;
+    robotsPolicyFor(
+      atsType: DiscoveryAtsType,
+      targetUrl: string,
+      signal?: AbortSignal,
+    ): Promise<RobotsPolicy>;
   };
 }
 
@@ -208,7 +247,44 @@ async function probeBoard(options: ProbeBoardOptions): Promise<ProbeAttempt> {
     return { atsType, token, url, outcome: "cached_miss" };
   }
 
+  let robotsPolicy: RobotsPolicy;
+  try {
+    robotsPolicy = await dependencies.robotsPolicyFor(atsType, url, signal);
+  } catch (cause) {
+    dependencies.circuits[atsType].pause();
+    return {
+      atsType,
+      token,
+      url,
+      outcome: "paused",
+      error: `robots.txt policy could not be checked: ${errorMessage(cause)}`,
+    };
+  }
+  if (!robotsPolicy.allows(url)) {
+    dependencies.circuits[atsType].pause();
+    return {
+      atsType,
+      token,
+      url,
+      outcome: "paused",
+      error: "robots.txt disallows this ATS API path",
+    };
+  }
+  dependencies.limiters[atsType].raiseMinRequestIntervalMs(
+    robotsPolicy.crawlDelayMs,
+  );
+
   return dependencies.limiters[atsType].run(async () => {
+    if (dependencies.circuits[atsType].isOpen()) {
+      return {
+        atsType,
+        token,
+        url,
+        outcome: "paused",
+        error: "ATS host is paused after repeated retryable failures",
+      };
+    }
+
     for (let attempt = 1; attempt <= config.maxAttempts; attempt += 1) {
       let response: Response;
       try {
@@ -225,11 +301,12 @@ async function probeBoard(options: ProbeBoardOptions): Promise<ProbeAttempt> {
       } catch (cause) {
         if (signal?.aborted) throw cause;
         if (attempt === config.maxAttempts) {
+          const paused = dependencies.circuits[atsType].recordFailure();
           return {
             atsType,
             token,
             url,
-            outcome: "failed",
+            outcome: paused ? "paused" : "failed",
             error: errorMessage(cause),
           };
         }
@@ -241,12 +318,25 @@ async function probeBoard(options: ProbeBoardOptions): Promise<ProbeAttempt> {
       }
 
       if (response.status === 404) {
+        dependencies.circuits[atsType].recordHealthyResponse();
         dependencies.negativeCache.mark(key);
         return { atsType, token, url, outcome: "not_found", status: 404 };
       }
 
       if (!response.ok) {
-        if (!retryableStatus(response.status) || attempt === config.maxAttempts) {
+        if (blockedStatus(response.status)) {
+          dependencies.circuits[atsType].pause();
+          return {
+            atsType,
+            token,
+            url,
+            outcome: "paused",
+            status: response.status,
+            error: `HTTP ${response.status}`,
+          };
+        }
+        if (!retryableStatus(response.status)) {
+          dependencies.circuits[atsType].recordHealthyResponse();
           return {
             atsType,
             token,
@@ -260,8 +350,19 @@ async function probeBoard(options: ProbeBoardOptions): Promise<ProbeAttempt> {
         const retryDelayMs =
           retryAfterMs(response.headers.get("retry-after"), dependencies.now) ??
           backoffMs(config.retryBaseDelayMs, attempt);
-        if (response.status === 429) {
-          dependencies.limiters[atsType].deferFor(retryDelayMs);
+        // Share upstream backoff with all queued probes for this ATS, not
+        // only 429s. Repeated 5xx responses should be treated just as gently.
+        dependencies.limiters[atsType].deferFor(retryDelayMs);
+        if (attempt === config.maxAttempts) {
+          const paused = dependencies.circuits[atsType].recordFailure();
+          return {
+            atsType,
+            token,
+            url,
+            outcome: paused ? "paused" : "failed",
+            status: response.status,
+            error: `HTTP ${response.status}`,
+          };
         }
         await dependencies.sleep(retryDelayMs, signal);
         continue;
@@ -271,11 +372,12 @@ async function probeBoard(options: ProbeBoardOptions): Promise<ProbeAttempt> {
       try {
         payload = await response.json();
       } catch (cause) {
+        const paused = dependencies.circuits[atsType].recordFailure();
         return {
           atsType,
           token,
           url,
-          outcome: "invalid_payload",
+          outcome: paused ? "paused" : "invalid_payload",
           status: response.status,
           error: errorMessage(cause),
         };
@@ -283,16 +385,21 @@ async function probeBoard(options: ProbeBoardOptions): Promise<ProbeAttempt> {
 
       const parsed = endpoint.parse(payload);
       if (!parsed) {
+        // A 2xx response is only healthy after it proves to be the documented
+        // ATS board shape. WAF/error pages commonly arrive as HTTP 200; do
+        // not let a sequence of those reset the host circuit breaker.
+        const paused = dependencies.circuits[atsType].recordFailure();
         return {
           atsType,
           token,
           url,
-          outcome: "invalid_payload",
+          outcome: paused ? "paused" : "invalid_payload",
           status: response.status,
           error: "response shape did not match the ATS board contract",
         };
       }
 
+      dependencies.circuits[atsType].recordHealthyResponse();
       dependencies.negativeCache.clear(key);
       return {
         atsType,
@@ -353,6 +460,50 @@ export function createDiscoveryVerifier(
           minRequestIntervalMs: config.minRequestIntervalMs,
         }),
     },
+    circuits: {
+      greenhouse: createAtsCircuit(config.maxConsecutiveFailuresPerAts),
+      lever: createAtsCircuit(config.maxConsecutiveFailuresPerAts),
+      ashby: createAtsCircuit(config.maxConsecutiveFailuresPerAts),
+    },
+  };
+  const robotsPolicies = new Map<DiscoveryAtsType, Promise<RobotsPolicy>>();
+
+  async function robotsPolicyFor(
+    atsType: DiscoveryAtsType,
+    targetUrl: string,
+    signal?: AbortSignal,
+  ): Promise<RobotsPolicy> {
+    if (dependencyOverrides.robotsPolicy) return dependencyOverrides.robotsPolicy;
+
+    let policy = robotsPolicies.get(atsType);
+    if (!policy) {
+      const loadedPolicy = fetchRobotsPolicy(
+        {
+          targetUrl,
+          userAgent: config.userAgent,
+          timeoutMs: config.timeoutMs,
+          maxAttempts: config.maxAttempts,
+          retryBaseDelayMs: config.retryBaseDelayMs,
+          signal,
+        },
+        {
+          fetchImpl: dependencies.fetchImpl,
+          sleep: dependencies.sleep,
+          now: dependencies.now,
+          requestLimiter: dependencies.limiters[atsType],
+        },
+      );
+      policy = loadedPolicy.catch((cause) => {
+        robotsPolicies.delete(atsType);
+        throw cause;
+      });
+      robotsPolicies.set(atsType, policy);
+    }
+    return policy;
+  }
+  const boardDependencies = {
+    ...dependencies,
+    robotsPolicyFor,
   } as const;
 
   async function probe(
@@ -369,9 +520,16 @@ export function createDiscoveryVerifier(
           token,
           signal,
           config,
-          dependencies,
+          dependencies: boardDependencies,
         });
         attempts.push(attempt);
+
+        if (attempt.outcome === "paused") {
+          // A paused host is a run-level stop signal. Do not keep trying
+          // other ATSes or slug variants for this candidate while upstream is
+          // telling us to back away.
+          return { candidate, attempts, company: null };
+        }
 
         if (attempt.outcome === "verified") {
           return {
@@ -379,7 +537,7 @@ export function createDiscoveryVerifier(
             attempts,
             company: {
               name: candidate.name.trim(),
-              slug: token,
+              slug: companySlug(candidate.name),
               atsType,
               atsToken: token,
               careersUrl: endpointDefinitions[atsType].careersUrl(token),

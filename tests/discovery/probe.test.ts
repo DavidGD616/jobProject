@@ -9,9 +9,10 @@ import {
 import type {
   CandidateCompany,
   DiscoveryProbeConfig,
+  DiscoveryProbeDependencies,
 } from "@/discovery";
-import { slugVariants } from "@/discovery";
-import { createSourceRequestLimiter } from "@/sources";
+import { companySlug, slugVariants } from "@/discovery";
+import { allowAllRobotsPolicy, createSourceRequestLimiter } from "@/sources";
 
 const greenhouseFixture = JSON.parse(
   readFileSync("tests/fixtures/discovery/greenhouse-board.json", "utf8"),
@@ -62,6 +63,16 @@ function candidate(overrides: Partial<CandidateCompany> = {}): CandidateCompany 
   };
 }
 
+function testVerifier(
+  config: Partial<DiscoveryProbeConfig> = probeConfig,
+  dependencies: DiscoveryProbeDependencies = {},
+) {
+  return createDiscoveryVerifier(config, {
+    robotsPolicy: allowAllRobotsPolicy,
+    ...dependencies,
+  });
+}
+
 test("slugVariants tries compact, hyphenated, and legal-suffix-stripped forms", () => {
   assert.deepEqual(slugVariants("Acme Corp, Inc."), [
     "acmecorpinc",
@@ -70,12 +81,15 @@ test("slugVariants tries compact, hyphenated, and legal-suffix-stripped forms", 
     "acme-corp",
     "acme",
   ]);
+  assert.deepEqual(slugVariants("Acme S.L."), ["acmesl", "acme-s-l", "acme"]);
+  assert.deepEqual(slugVariants("Acme L.L.C."), ["acmellc", "acme-l-l-c", "acme"]);
+  assert.equal(companySlug("Acme Corp, Inc."), "acme");
 });
 
 test("verify accepts a valid Greenhouse board and returns its canonical URL", async () => {
   const requestedUrls: string[] = [];
   let requestedHeaders: Headers | undefined;
-  const verifier = createDiscoveryVerifier(probeConfig, {
+  const verifier = testVerifier(probeConfig, {
     limiters: limiters(),
     fetchImpl: async (input, init) => {
       requestedUrls.push(String(input));
@@ -124,7 +138,7 @@ test("verify validates Lever and Ashby response shapes", async () => {
 
   for (const testCase of cases) {
     let requestedUrl = "";
-    const verifier = createDiscoveryVerifier(probeConfig, {
+    const verifier = testVerifier(probeConfig, {
       limiters: limiters(),
       fetchImpl: async (input) => {
         requestedUrl = String(input);
@@ -146,7 +160,7 @@ test("verify validates Lever and Ashby response shapes", async () => {
 test("verify falls through slug variants and records a cached 404", async () => {
   let calls = 0;
   const negativeCache = createNegativeProbeCache();
-  const verifier = createDiscoveryVerifier(probeConfig, {
+  const verifier = testVerifier(probeConfig, {
     negativeCache,
     limiters: limiters(),
     fetchImpl: async () => {
@@ -172,7 +186,7 @@ test("verify falls through slug variants and records a cached 404", async () => 
 test("verify retries 429 and honors Retry-After without retrying malformed payloads", async () => {
   let attempts = 0;
   const delays: number[] = [];
-  const verifier = createDiscoveryVerifier(probeConfig, {
+  const verifier = testVerifier(probeConfig, {
     limiters: limiters(),
     fetchImpl: async () => {
       attempts += 1;
@@ -198,7 +212,7 @@ test("verify retries 429 and honors Retry-After without retrying malformed paylo
   assert.deepEqual(delays, [0]);
 
   let malformedAttempts = 0;
-  const malformedVerifier = createDiscoveryVerifier(probeConfig, {
+  const malformedVerifier = testVerifier(probeConfig, {
     limiters: limiters(),
     fetchImpl: async () => {
       malformedAttempts += 1;
@@ -217,10 +231,43 @@ test("verify retries 429 and honors Retry-After without retrying malformed paylo
   assert.equal(malformedAttempts, 1);
 });
 
+test("repeated invalid 2xx payloads pause an ATS host", async () => {
+  let requests = 0;
+  const verifier = testVerifier(
+    {
+      ...probeConfig,
+      maxAttempts: 1,
+      maxConsecutiveFailuresPerAts: 2,
+    },
+    {
+      limiters: limiters(),
+      fetchImpl: async () => {
+        requests += 1;
+        return jsonResponse({ error: "WAF challenge" });
+      },
+    },
+  );
+
+  const first = await verifier.probe(
+    candidate({ atsType: "greenhouse", atsToken: "first" }),
+  );
+  const second = await verifier.probe(
+    candidate({ atsType: "greenhouse", atsToken: "second" }),
+  );
+  const third = await verifier.probe(
+    candidate({ atsType: "greenhouse", atsToken: "third" }),
+  );
+
+  assert.equal(first.attempts[0]?.outcome, "invalid_payload");
+  assert.equal(second.attempts[0]?.outcome, "paused");
+  assert.equal(third.attempts[0]?.outcome, "paused");
+  assert.equal(requests, 2);
+});
+
 test("verify uses the per-ATS concurrency limiter", async () => {
   let active = 0;
   let maximumActive = 0;
-  const verifier = createDiscoveryVerifier(probeConfig, {
+  const verifier = testVerifier(probeConfig, {
     limiters: {
       greenhouse: createSourceRequestLimiter({
         maxConcurrentRequests: 1,
@@ -247,4 +294,114 @@ test("verify uses the per-ATS concurrency limiter", async () => {
   );
 
   assert.equal(maximumActive, 1);
+});
+
+test("verify pauses an ATS after repeated retryable failures", async () => {
+  let requests = 0;
+  const verifier = testVerifier(
+    {
+      ...probeConfig,
+      maxAttempts: 1,
+      maxConsecutiveFailuresPerAts: 2,
+    },
+    {
+      limiters: limiters(),
+      fetchImpl: async () => {
+        requests += 1;
+        return new Response(null, { status: 503 });
+      },
+      sleep: async () => {},
+    },
+  );
+
+  const first = await verifier.probe(
+    candidate({ atsType: "greenhouse", atsToken: "first" }),
+  );
+  const second = await verifier.probe(
+    candidate({ atsType: "greenhouse", atsToken: "second" }),
+  );
+  const third = await verifier.probe(
+    candidate({ atsType: "greenhouse", atsToken: "third" }),
+  );
+
+  assert.equal(first.attempts[0]?.outcome, "failed");
+  assert.equal(second.attempts[0]?.outcome, "paused");
+  assert.equal(third.attempts[0]?.outcome, "paused");
+  assert.equal(requests, 2);
+});
+
+test("a paused host stops remaining ATS and slug probes for the candidate", async () => {
+  let requests = 0;
+  const verifier = testVerifier(
+    {
+      ...probeConfig,
+      maxAttempts: 1,
+      maxConsecutiveFailuresPerAts: 1,
+    },
+    {
+      limiters: limiters(),
+      fetchImpl: async () => {
+        requests += 1;
+        return new Response(null, { status: 503 });
+      },
+    },
+  );
+
+  const result = await verifier.probe(candidate({ name: "Alpha Labs Corp" }));
+
+  assert.deepEqual(
+    result.attempts.map((attempt) => attempt.atsType),
+    ["greenhouse"],
+  );
+  assert.equal(result.attempts[0]?.outcome, "paused");
+  assert.equal(requests, 1);
+});
+
+test("a blocked ATS response pauses the host immediately", async () => {
+  let requests = 0;
+  const verifier = testVerifier(probeConfig, {
+    limiters: limiters(),
+    fetchImpl: async () => {
+      requests += 1;
+      return new Response(null, { status: 403 });
+    },
+  });
+
+  const first = await verifier.probe(
+    candidate({ atsType: "greenhouse", atsToken: "first" }),
+  );
+  const second = await verifier.probe(
+    candidate({ atsType: "greenhouse", atsToken: "second" }),
+  );
+
+  assert.equal(first.attempts[0]?.outcome, "paused");
+  assert.equal(second.attempts[0]?.outcome, "paused");
+  assert.equal(requests, 1);
+});
+
+test("probe checks robots.txt before an ATS API request", async () => {
+  const requestedUrls: string[] = [];
+  const verifier = createDiscoveryVerifier(
+    { ...probeConfig, maxAttempts: 1 },
+    {
+      limiters: limiters(),
+      fetchImpl: async (input) => {
+        const url = String(input);
+        requestedUrls.push(url);
+        if (url.endsWith("/robots.txt")) {
+          return new Response("User-agent: *\nDisallow: /v1/boards/blocked\n", {
+            headers: { "content-type": "text/plain" },
+          });
+        }
+        throw new Error("board API must not be reached when robots disallows it");
+      },
+    },
+  );
+
+  const result = await verifier.probe(
+    candidate({ atsType: "greenhouse", atsToken: "blocked" }),
+  );
+
+  assert.equal(result.attempts[0]?.outcome, "paused");
+  assert.deepEqual(requestedUrls, ["https://boards-api.greenhouse.io/robots.txt"]);
 });

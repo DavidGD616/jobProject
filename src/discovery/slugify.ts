@@ -25,6 +25,26 @@ function tokens(value: string): string[] {
     .filter(Boolean);
 }
 
+function trailingLegalSuffixLength(value: readonly string[]): number {
+  // Punctuation-separated abbreviations (for example, `S.L.` and `L.L.C.`)
+  // are tokenized as individual letters. Join up to three trailing tokens so
+  // the same legal-suffix rule handles both abbreviated and plain forms.
+  for (let length = Math.min(3, value.length); length > 0; length -= 1) {
+    if (legalSuffixes.has(value.slice(-length).join(""))) return length;
+  }
+  return 0;
+}
+
+function stripTrailingLegalSuffixes(value: readonly string[]): string[] {
+  let current = [...value];
+  while (current.length > 0) {
+    const suffixLength = trailingLegalSuffixLength(current);
+    if (suffixLength === 0) break;
+    current = current.slice(0, -suffixLength);
+  }
+  return current;
+}
+
 function normalizeToken(value: string): string {
   return value
     .normalize("NFKC")
@@ -44,9 +64,9 @@ export function slugVariants(value: string): string[] {
   let current = rawTokens;
   while (current.length > 0) {
     tokenSets.push(current);
-    const last = current.at(-1);
-    if (!last || !legalSuffixes.has(last)) break;
-    current = current.slice(0, -1);
+    const suffixLength = trailingLegalSuffixLength(current);
+    if (suffixLength === 0) break;
+    current = current.slice(0, -suffixLength);
   }
 
   const candidates = tokenSets.flatMap((tokenSet) => [
@@ -64,4 +84,12 @@ export function slugVariants(value: string): string[] {
     }
   }
   return variants;
+}
+
+/**
+ * Stable company identity for storage and deduplication. ATS board tokens are
+ * intentionally kept separate because their namespaces differ by provider.
+ */
+export function companySlug(value: string): string {
+  return normalizeToken(stripTrailingLegalSuffixes(tokens(value)).join("-"));
 }

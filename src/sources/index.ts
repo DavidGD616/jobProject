@@ -11,3 +11,14 @@ export type { RemoteType } from "./normalize";
 export { sourceRegistry } from "./registry";
 export type { SourceRequestLimiter, SourceRateLimitConfig } from "./rate-limit";
 export { createSourceRequestLimiter, delay } from "./rate-limit";
+export {
+  allowAllRobotsPolicy,
+  fetchRobotsPolicy,
+  parseRobotsPolicy,
+  RobotsPolicyError,
+} from "./robots";
+export type {
+  FetchRobotsPolicyConfig,
+  FetchRobotsPolicyDependencies,
+  RobotsPolicy,
+} from "./robots";

@@ -1,9 +1,10 @@
 import type {
   CandidateCompany,
+  DiscoveryAtsType,
   ProbeResult,
   VerifiedCompany,
 } from "./_contract";
-import { probe as defaultProbe } from "./probe";
+import { createDiscoveryVerifier } from "./probe";
 import type { DiscoveryVerifier } from "./probe";
 import { discoveryProbeConfig } from "./config";
 
@@ -15,8 +16,10 @@ export interface BulkProbeOptions {
 
 export interface BulkProbeResult {
   candidates: number;
+  processed: number;
   results: ProbeResult[];
   verified: VerifiedCompany[];
+  pausedAtsTypes: DiscoveryAtsType[];
 }
 
 function uniqueVerified(companies: Iterable<VerifiedCompany>): VerifiedCompany[] {
@@ -35,24 +38,32 @@ export async function runBulkProbe(
   candidates: readonly CandidateCompany[],
   options: BulkProbeOptions = {},
 ): Promise<BulkProbeResult> {
-  const verifier = options.verifier;
+  // A fresh verifier makes its host circuit breakers run-scoped. The exported
+  // one-off probe remains useful for callers that do not need batch behavior.
+  const verifier = options.verifier ?? createDiscoveryVerifier();
   const configuredConcurrency =
     options.maxCandidatesInFlight ?? discoveryProbeConfig.maxCandidatesInFlight;
   const maxCandidatesInFlight = Number.isFinite(configuredConcurrency)
     ? Math.max(1, Math.floor(configuredConcurrency))
     : discoveryProbeConfig.maxCandidatesInFlight;
-  const results = new Array<ProbeResult>(candidates.length);
+  const results = new Array<ProbeResult | undefined>(candidates.length);
   let nextIndex = 0;
+  let stopped = false;
 
   async function worker(): Promise<void> {
     while (true) {
+      if (stopped) return;
       const index = nextIndex;
       nextIndex += 1;
       if (index >= candidates.length) return;
 
-      results[index] = verifier
-        ? await verifier.probe(candidates[index]!, options.signal)
-        : await defaultProbe(candidates[index]!, options.signal);
+      const result = await verifier.probe(candidates[index]!, options.signal);
+      results[index] = result;
+      if (result.attempts.some((attempt) => attempt.outcome === "paused")) {
+        // Current workers are allowed to finish their in-flight candidate;
+        // no additional candidates are dispatched once an ATS is paused.
+        stopped = true;
+      }
     }
   }
 
@@ -61,11 +72,28 @@ export async function runBulkProbe(
     Array.from({ length: workerCount }, () => worker()),
   );
 
+  const completedResults = results.filter(
+    (result): result is ProbeResult => result !== undefined,
+  );
+  const pausedAtsTypes = [
+    ...new Set(
+      completedResults.flatMap((result) =>
+        result.attempts
+          .filter((attempt) => attempt.outcome === "paused")
+          .map((attempt) => attempt.atsType),
+      ),
+    ),
+  ];
+
   return {
     candidates: candidates.length,
-    results,
+    processed: completedResults.length,
+    results: completedResults,
     verified: uniqueVerified(
-      results.flatMap((result) => (result.company ? [result.company] : [])),
+      completedResults.flatMap((result) =>
+        result.company ? [result.company] : [],
+      ),
     ),
+    pausedAtsTypes,
   };
 }

@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { createSourceRequestLimiter, sourceRegistry } from "@/sources";
+import {
+  allowAllRobotsPolicy,
+  createSourceRequestLimiter,
+  sourceRegistry,
+} from "@/sources";
 import type { SourceRequestLimiter } from "@/sources";
 import {
   adapter,
@@ -56,6 +60,7 @@ function testFetcher(
       maxConcurrentRequests: 2,
       minRequestIntervalMs: 0,
     }),
+    robotsPolicy: allowAllRobotsPolicy,
     sleep: async () => {},
     ...overrides,
   });
@@ -159,6 +164,34 @@ test("fetch requests the public board endpoint and captures its ETag", async () 
   assert.equal(requestedHeaders?.get("if-none-match"), null);
 });
 
+test("fetch checks robots.txt before requesting a Greenhouse board", async () => {
+  const requestedUrls: string[] = [];
+  const fetcher = createGreenhouseFetcher({
+    requestLimiter: createSourceRequestLimiter({
+      maxConcurrentRequests: 1,
+      minRequestIntervalMs: 0,
+    }),
+    fetchImpl: async (input) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.endsWith("/robots.txt")) {
+        return new Response("User-agent: *\nDisallow: /v1/boards/stripe/jobs\n", {
+          headers: { "content-type": "text/plain" },
+        });
+      }
+      throw new Error("board API must not be reached when robots disallows it");
+    },
+  });
+
+  await assert.rejects(
+    () => fetcher(config()),
+    (error: unknown) =>
+      error instanceof GreenhouseFetchError &&
+      /robots\.txt disallows/.test(error.message),
+  );
+  assert.deepEqual(requestedUrls, ["https://boards-api.greenhouse.io/robots.txt"]);
+});
+
 test("fetch treats a conditional 304 as unchanged rather than an empty board", async () => {
   let requestedHeaders: Headers | undefined;
   const fetcher = testFetcher({
@@ -200,6 +233,7 @@ test("fetch retries rate limits, preserves its validator, and honors long Retry-
     deferFor(ms: number): void {
       sourceCooldowns.push(ms);
     },
+    raiseMinRequestIntervalMs(): void {},
   };
   const fetcher = testFetcher({
     fetchImpl: async (_input, init) => {
@@ -342,6 +376,7 @@ test("fetch caps concurrent Greenhouse board requests at the registered policy",
       maxConcurrentRequests: greenhouseSourceConfig.maxConcurrentRequests,
       minRequestIntervalMs: 0,
     }),
+    robotsPolicy: allowAllRobotsPolicy,
     sleep: async () => {},
     fetchImpl: async () => {
       active += 1;

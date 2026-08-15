@@ -12,6 +12,12 @@ export interface SourceRequestLimiter {
 
   /** Defer every future source request after an upstream rate-limit response. */
   deferFor(ms: number): void;
+
+  /**
+   * Increase the spacing floor after a source publishes a stricter
+   * `Crawl-delay` in robots.txt. It can never weaken the configured limit.
+   */
+  raiseMinRequestIntervalMs(ms: number): void;
 }
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
@@ -133,12 +139,14 @@ export function createSourceRequestLimiter(
   }
 
   const gate = new ConcurrencyGate(config.maxConcurrentRequests);
+  let minRequestIntervalMs = config.minRequestIntervalMs;
+  let lastRequestStartedAt = 0;
   let nextRequestAt = 0;
   let deferredUntil = 0;
 
   function reserveRequestAt(): number {
     const requestAt = Math.max(Date.now(), nextRequestAt, deferredUntil);
-    nextRequestAt = requestAt + config.minRequestIntervalMs;
+    nextRequestAt = requestAt + minRequestIntervalMs;
     return requestAt;
   }
 
@@ -160,7 +168,17 @@ export function createSourceRequestLimiter(
       let requestAt = reserveRequestAt();
       while (true) {
         await delay(Math.max(0, requestAt - Date.now()), signal);
-        if (Date.now() >= deferredUntil) return;
+        if (Date.now() >= deferredUntil) {
+          // Record the actual start rather than only the reservation. This
+          // lets a robots.txt Crawl-delay apply to the very next request even
+          // when the policy was learned from the preceding robots fetch.
+          lastRequestStartedAt = Date.now();
+          nextRequestAt = Math.max(
+            nextRequestAt,
+            lastRequestStartedAt + minRequestIntervalMs,
+          );
+          return;
+        }
 
         // This caller reserved its first slot before a different request
         // received a 429. Reserve again after the shared cooldown so its
@@ -176,6 +194,17 @@ export function createSourceRequestLimiter(
 
       deferredUntil = Math.max(deferredUntil, Date.now() + ms);
       nextRequestAt = Math.max(nextRequestAt, deferredUntil);
+    },
+
+    raiseMinRequestIntervalMs(ms: number): void {
+      if (!Number.isFinite(ms) || ms < 0) {
+        throw new RangeError("rate-limit interval must be a finite, non-negative number");
+      }
+      minRequestIntervalMs = Math.max(minRequestIntervalMs, ms);
+      nextRequestAt = Math.max(
+        nextRequestAt,
+        lastRequestStartedAt + minRequestIntervalMs,
+      );
     },
   };
 }

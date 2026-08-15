@@ -50,7 +50,7 @@ Per [ADR-0010](adr/0010-company-discovery.md), the company list is derived. Four
 | Mechanism | How | Yield |
 |---|---|---|
 | **Bulk probe** | Slugify candidate names, probe all ATS endpoints, keep the 200s | Hundreds, one-time seed |
-| **HN "Who is hiring"** | Monthly thread via the free Algolia API → names → probe | Dozens/month, actively hiring |
+| **HN "Who is hiring"** | Rolling monthly threads via the free Algolia API → names → probe | Initial automatic seed + dozens/month |
 | **Aggregator query** | Search Adzuna by role + location, read company names off results | Companies outside any hand-written list |
 | **Reverse extraction** | Pull the ATS token out of an aggregator listing's apply URL: `boards.greenhouse.io/{token}/jobs/…` | Best quality — promotes straight to Tier 1 |
 
@@ -79,7 +79,17 @@ These are free public endpoints. Getting blocked is self-inflicted and permanent
 - Conditional requests (`If-None-Match` / `If-Modified-Since`) where supported
 - Cadence: Tier 1 every 6h · Tier 2 daily · Tier 3 daily · discovery weekly
 - Exponential backoff on 429/5xx, and stop the run after repeated failures rather than hammering
+- Stop immediately on an access-denied response (401/403/451); it is a host-level signal, not a bad company token
 - Respect `robots.txt` even where you are calling an API
+
+Discovery and source adapters load and cache
+`https://<request-origin>/robots.txt` through the same limiter before their
+first API request, enforce its matching
+allow/disallow rules, and raise their request spacing for a stricter
+`Crawl-delay`. Per [RFC 9309](https://www.rfc-editor.org/rfc/rfc9309.html), a
+4xx response other than 429 means the robots policy is unavailable and is
+treated as no published restriction; 429, 5xx, malformed policy responses, and
+network failures fail safely without making the target API request.
 
 ## Adding a source
 
@@ -96,4 +106,4 @@ Checklists live in the skills: `job-source` for postings, `discovery-source` for
 Append findings here as they surface — this section is the reason the doc exists.
 
 - **Greenhouse:** the public board endpoint is `GET /v1/boards/{token}/jobs?content=true`; descriptions arrive entity-encoded HTML and are decoded and reduced to plain text by the adapter. The list response includes `meta.total`, but the Job Board endpoint returns the board's current postings in one response rather than using the Harvest `page`/`per_page` pagination contract. It returns an `ETag`; the adapter sends it as `If-None-Match` on later polls and represents a 304 as `not_modified`, never an empty board. The registered Tier 1 policy runs every 6h, permits two concurrent board polls, spaces request starts by 500ms, and defers the source after a 429 for the full `Retry-After` delay.
-- **Bulk probe:** `pnpm discover:seed` accepts newline-delimited candidate names from `--input` or stdin, tries compact/hyphenated/legal-suffix-stripped slugs against Greenhouse, Lever, and Ashby, and caches confirmed 404s under `data/`. Verified boards are upserted into `companies`; the probe does not fetch or store job postings.
+- **Bulk probe:** `pnpm discover:seed` derives candidates from the latest 36 monthly HN hiring threads (or one reproducible `--hn-story-id`), so it never asks the user to supply company names. A 2026-08 parser-only check yielded 424 unique ATS-hinted candidates; the full ≥300 live-board exit run remains to be measured. It admits only top-level listings with an exact official Greenhouse, Lever, or Ashby URL: explicit `Company:`/`Company Name:` headings are accepted, while pipe headings must normalize to that board's token. That conservative rule prevents titles, locations, and reply text from becoming companies, while richer HN prose parsing remains deferred until the LLM harness exists. The URL supplies a single ATS/token hint; unhinted sources use compact/hyphenated/legal-suffix-stripped slugs across supported hosts. Probes check and honor each API origin's robots policy, space starts by one second per host (or a stricter published delay), cache confirmed 404s under `data/`, and write detailed attempts to `data/discovery-last-run.json`. Repeated retryable failures, invalid 2xx payloads, or access-denied responses pause the affected host, stop the batch, skip DB writes, and return a non-zero exit code. Verified boards alone are upserted into `companies`; the probe does not fetch or store job postings.

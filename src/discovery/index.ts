@@ -15,6 +15,23 @@ export {
 } from "./cache";
 export type { NegativeProbeCache } from "./cache";
 export { discover, parseCandidateNames } from "./seed";
+export {
+  createHnHiringDiscovery,
+  discoverHnHiring,
+  findLatestHnHiringStory,
+  findRecentHnHiringStories,
+  hnHiringDiscoveryConfig,
+  parseHnHiringCandidate,
+  parseHnHiringComment,
+  parseHnHiringCompanyLine,
+} from "./hn-hiring";
+export type {
+  HnHiringDiscoverOptions,
+  HnHiringDiscovery,
+  HnHiringDiscoveryConfig,
+  HnHiringDiscoveryDependencies,
+  HnHiringStory,
+} from "./hn-hiring";
 export { createDiscoveryVerifier, probe, verify } from "./probe";
 export type {
   DiscoveryProbeConfig,
@@ -25,4 +42,4 @@ export { runBulkProbe } from "./runner";
 export type { BulkProbeOptions, BulkProbeResult } from "./runner";
 export { upsertVerifiedCompanies } from "./store";
 export type { DiscoveryUpsertResult } from "./store";
-export { slugVariants } from "./slugify";
+export { companySlug, slugVariants } from "./slugify";
