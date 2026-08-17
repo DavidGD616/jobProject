@@ -46,6 +46,7 @@ export function asCareerPageBrowser(
   return {
     async goto(url) {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+      await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 5_000) }).catch(() => undefined);
     },
     content: () => page.content(),
   };
@@ -67,4 +68,3 @@ export function asLocalBrowserPage(
     setInputFiles: (selector, path) => page.locator(selector).setInputFiles(path, { timeout: timeoutMs }),
   };
 }
-
