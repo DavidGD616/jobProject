@@ -207,3 +207,63 @@ test("an access-denied response pauses the source before another board is dispat
     sqlite.close();
   }
 });
+
+test("a final rate limit pauses the source and persists its full cooldown", async () => {
+  const { db, sqlite } = createTestDatabase();
+  try {
+    await insertCompany(db, { name: "First", slug: "first" });
+    await insertCompany(db, { name: "Second", slug: "second" });
+    const calls: Array<{ etag: string | null | undefined; companyId: number }> = [];
+    const rateLimited = Object.assign(new Error("too many requests"), {
+      status: 429,
+      retryDelayMs: 120_000,
+    });
+    const source = fakeSource([rateLimited], calls);
+    const now = new Date("2026-08-17T00:00:00.000Z");
+
+    const result = await runSourcePolls(db, {
+      sources: [source],
+      now: () => now,
+    });
+
+    assert.equal(result.attempted, 1);
+    assert.deepEqual(result.pausedSources, ["test-source"]);
+    assert.equal(calls.length, 1);
+    const polls = await db.select().from(sourcePolls);
+    assert.equal(polls[0]!.nextPollAt?.valueOf(), now.valueOf() + 120_000);
+
+    const duringCooldown = await runSourcePolls(db, {
+      sources: [source],
+      now: () => new Date(now.valueOf() + 60_000),
+    });
+    assert.equal(duringCooldown.due, 0);
+    assert.equal(calls.length, 1);
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("repeated retryable responses pause the source before a third board", async () => {
+  const { db, sqlite } = createTestDatabase();
+  try {
+    await insertCompany(db, { name: "First", slug: "first" });
+    await insertCompany(db, { name: "Second", slug: "second" });
+    await insertCompany(db, { name: "Third", slug: "third" });
+    const calls: Array<{ etag: string | null | undefined; companyId: number }> = [];
+    const firstFailure = Object.assign(new Error("upstream error"), { status: 503 });
+    const secondFailure = Object.assign(new Error("upstream error"), { status: 503 });
+    const source = fakeSource([firstFailure, secondFailure], calls);
+
+    const result = await runSourcePolls(db, {
+      sources: [source],
+      now: () => new Date("2026-08-17T00:00:00.000Z"),
+    });
+
+    assert.equal(result.attempted, 2);
+    assert.equal(result.failed, 2);
+    assert.deepEqual(result.pausedSources, ["test-source"]);
+    assert.equal(calls.length, 2);
+  } finally {
+    sqlite.close();
+  }
+});

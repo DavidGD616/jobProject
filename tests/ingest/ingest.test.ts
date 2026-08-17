@@ -136,14 +136,31 @@ test("ingest upserts observations, links content duplicates, and closes only aft
       source: "greenhouse",
       observedAt: new Date("2026-08-18T00:00:00.000Z"),
     });
-    assert.deepEqual(firstMissing, { firstMissing: 1, closed: 0 });
+    assert.deepEqual(firstMissing, {
+      canonicalized: 0,
+      firstMissing: 1,
+      closed: 0,
+    });
 
     const closed = await markMissingSourceJobs(db, {
       companyId: company.id,
       source: "greenhouse",
       observedAt: new Date("2026-08-18T06:00:00.000Z"),
     });
-    assert.deepEqual(closed, { firstMissing: 0, closed: 1 });
+    assert.deepEqual(closed, {
+      canonicalized: 1,
+      firstMissing: 0,
+      closed: 1,
+    });
+
+    const afterClosing = await db
+      .select({ id: jobs.id, canonicalId: jobs.canonicalId, closedAt: jobs.closedAt })
+      .from(jobs)
+      .where(eq(jobs.companyId, company.id))
+      .orderBy(jobs.id);
+    assert.notEqual(afterClosing[0]!.closedAt, null);
+    assert.equal(afterClosing[0]!.canonicalId, afterClosing[1]!.id);
+    assert.equal(afterClosing[1]!.canonicalId, null);
 
     const reopened = await ingestObservedPostings(db, {
       company,

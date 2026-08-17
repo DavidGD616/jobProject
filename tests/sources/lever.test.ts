@@ -288,6 +288,36 @@ test("fetch retries rate limits, preserves its validator, and honors long Retry-
   assert.equal(result.kind, "fetched");
 });
 
+test("fetch preserves the cooldown from a final 429 for later boards", async () => {
+  const sourceCooldowns: number[] = [];
+  const requestLimiter: SourceRequestLimiter = {
+    async run<T>(operation: () => Promise<T>): Promise<T> {
+      return operation();
+    },
+    async waitForRequestSlot(): Promise<void> {},
+    deferFor(ms: number): void {
+      sourceCooldowns.push(ms);
+    },
+    raiseMinRequestIntervalMs(): void {},
+  };
+  const fetcher = testFetcher({
+    fetchImpl: async () =>
+      new Response(null, { status: 429, headers: { "retry-after": "60" } }),
+    requestLimiter,
+  });
+
+  await assert.rejects(
+    fetcher(config({ maxAttempts: 1 })),
+    (error: unknown) => {
+      assert.ok(error instanceof LeverFetchError);
+      assert.equal(error.status, 429);
+      assert.equal(error.retryDelayMs, 60_000);
+      return true;
+    },
+  );
+  assert.deepEqual(sourceCooldowns, [60_000]);
+});
+
 test("fetch retries transient network and server failures, but not client failures", async () => {
   let networkAttempts = 0;
   const networkDelays: number[] = [];

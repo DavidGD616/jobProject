@@ -159,9 +159,13 @@ function writeObservedPostings(
 function markMissingSourceJobsInTransaction(
   db: JobHuntDatabase,
   input: { companyId: number; source: string; observedAt: Date },
-): Pick<JobIngestSummary, "firstMissing" | "closed"> {
+): Pick<JobIngestSummary, "canonicalized" | "firstMissing" | "closed"> {
   const absent = db
-    .select({ id: jobs.id, missingSinceAt: jobs.missingSinceAt })
+    .select({
+      id: jobs.id,
+      missingSinceAt: jobs.missingSinceAt,
+      contentHash: jobs.contentHash,
+    })
     .from(jobs)
     .where(
       and(
@@ -176,9 +180,8 @@ function markMissingSourceJobsInTransaction(
   const firstMissingIds = absent
     .filter((job) => job.missingSinceAt === null)
     .map((job) => job.id);
-  const closingIds = absent
-    .filter((job) => job.missingSinceAt !== null)
-    .map((job) => job.id);
+  const closingJobs = absent.filter((job) => job.missingSinceAt !== null);
+  const closingIds = closingJobs.map((job) => job.id);
 
   if (firstMissingIds.length > 0) {
     db
@@ -195,7 +198,16 @@ function markMissingSourceJobsInTransaction(
       .run();
   }
 
-  return { firstMissing: firstMissingIds.length, closed: closingIds.length };
+  let canonicalized = 0;
+  for (const hash of new Set(closingJobs.map((job) => job.contentHash))) {
+    canonicalized += reconcileHashGroup(db, input.companyId, hash);
+  }
+
+  return {
+    canonicalized,
+    firstMissing: firstMissingIds.length,
+    closed: closingIds.length,
+  };
 }
 
 /** Insert/refresh an observation set without evaluating absence state. */
@@ -238,6 +250,6 @@ export async function ingestSourceSnapshot(
 export async function markMissingSourceJobs(
   db: JobHuntDatabase,
   input: { companyId: number; source: string; observedAt: Date },
-): Promise<Pick<JobIngestSummary, "firstMissing" | "closed">> {
+): Promise<Pick<JobIngestSummary, "canonicalized" | "firstMissing" | "closed">> {
   return markMissingSourceJobsInTransaction(db, input);
 }

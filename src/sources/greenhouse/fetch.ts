@@ -39,15 +39,23 @@ export interface GreenhouseFetchDependencies {
 
 export class GreenhouseFetchError extends Error {
   readonly status: number | undefined;
+  /** Delay supplied by the upstream response or calculated for this failure. */
+  readonly retryDelayMs: number | undefined;
   readonly url: string;
 
   constructor(
     message: string,
-    options: { url: string; status?: number; cause?: unknown },
+    options: {
+      url: string;
+      status?: number;
+      retryDelayMs?: number;
+      cause?: unknown;
+    },
   ) {
     super(message, { cause: options.cause });
     this.name = "GreenhouseFetchError";
     this.status = options.status;
+    this.retryDelayMs = options.retryDelayMs;
     this.url = options.url;
   }
 }
@@ -178,7 +186,7 @@ async function fetchBoard(
     }
 
     if (!response.ok) {
-      if (!retryableStatus(response.status) || attempt === maxAttempts) {
+      if (!retryableStatus(response.status)) {
         throw new GreenhouseFetchError(
           `Greenhouse returned HTTP ${response.status}`,
           { url, status: response.status },
@@ -188,8 +196,12 @@ async function fetchBoard(
       const retryDelayMs =
         retryAfterMs(response.headers.get("retry-after")) ??
         backoffMs(baseDelayMs, attempt);
-      if (response.status === 429) {
-        dependencies.requestLimiter.deferFor(retryDelayMs);
+      dependencies.requestLimiter.deferFor(retryDelayMs);
+      if (attempt === maxAttempts) {
+        throw new GreenhouseFetchError(
+          `Greenhouse returned HTTP ${response.status}`,
+          { url, status: response.status, retryDelayMs },
+        );
       }
       await dependencies.sleep(retryDelayMs, config.signal);
       continue;

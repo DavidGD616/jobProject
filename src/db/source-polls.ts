@@ -9,6 +9,14 @@ export interface DueSourcePoll {
   poll: SourcePoll | null;
 }
 
+function isRetryableFailureStatus(status: string | null): boolean {
+  return (
+    status === "error" ||
+    status === "http_429" ||
+    /^http_5\d\d$/.test(status ?? "")
+  );
+}
+
 /**
  * Source work is deliberately selected by the persisted due timestamp rather
  * than a process-local interval. Restarting a worker therefore cannot create
@@ -38,6 +46,18 @@ export function listDueSourcePolls(
     .all();
 
   if (input.force) return rows;
+  // A rate-limited or unavailable host is a source-wide signal, not a reason
+  // to immediately move on to the next company. The triggering board stores
+  // the shared cooldown in its persisted poll record, so a worker restart
+  // still respects it before dispatching another board for that source.
+  const sourceCooldownActive = rows.some(
+    ({ poll }) =>
+      poll?.nextPollAt !== null &&
+      poll?.nextPollAt !== undefined &&
+      poll.nextPollAt > input.now &&
+      isRetryableFailureStatus(poll.lastStatus),
+  );
+  if (sourceCooldownActive) return [];
   return rows.filter(
     ({ poll }) => poll?.nextPollAt === null || poll?.nextPollAt === undefined ||
       poll.nextPollAt <= input.now,

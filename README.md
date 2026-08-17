@@ -1,7 +1,8 @@
 # Job Hunt Agent
 
-Local-only job discovery and application workspace. The project is currently
-in Phase 1: building the ingestion pipeline for official ATS boards.
+Local-only job discovery and application workspace. Phase 1's ingestion
+pipeline for official ATS boards is complete; the next work begins with the
+LLM harness and matching workflow.
 
 ## Run locally
 

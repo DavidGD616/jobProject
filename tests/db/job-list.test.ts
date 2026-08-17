@@ -16,11 +16,11 @@ function createTestDatabase() {
   return { db, sqlite };
 }
 
-test("job-list filters return only open canonical, unblocked jobs", async () => {
+test("job-list filters return only active, open canonical, unblocked jobs", async () => {
   const { db, sqlite } = createTestDatabase();
   try {
     const now = new Date("2026-08-17T12:00:00.000Z");
-    const [acme, blocked] = await db
+    const [acme, blocked, inactive] = await db
       .insert(companies)
       .values([
         {
@@ -36,6 +36,15 @@ test("job-list filters return only open canonical, unblocked jobs", async () => 
           slug: "blocked-co",
           atsType: "greenhouse",
           blocked: true,
+          discoveredVia: "test",
+          discoveredAt: now,
+          createdAt: now,
+        },
+        {
+          name: "Inactive Co",
+          slug: "inactive-co",
+          atsType: "greenhouse",
+          active: false,
           discoveredVia: "test",
           discoveredAt: now,
           createdAt: now,
@@ -97,6 +106,18 @@ test("job-list filters return only open canonical, unblocked jobs", async () => 
         firstSeenAt: now,
         lastSeenAt: now,
         contentHash: "blocked-hash",
+      },
+      {
+        companyId: inactive!.id,
+        source: "greenhouse",
+        sourceId: "inactive",
+        url: "https://example.com/inactive",
+        title: "Inactive Role",
+        titleNorm: "inactive role",
+        description: "The board is no longer available.",
+        firstSeenAt: now,
+        lastSeenAt: now,
+        contentHash: "inactive-hash",
       },
     ]);
 

@@ -1,6 +1,6 @@
 # 02 — Data model
 
-**Status:** Draft · **Last updated:** 2026-08-13
+**Status:** Current · **Last updated:** 2026-08-17
 **Engine:** SQLite + FTS5, WAL mode ([ADR-0002](adr/0002-storage-engine.md)).
 
 Types below are written generically. In SQLite, `text[]` is stored as a JSON array and `json` as `TEXT`. Anything that needs filtering must be a real column, never a key inside a JSON blob.
@@ -22,7 +22,7 @@ companies (
                                           --   | reverse_url | manual
   discovered_at  timestamp not null
   last_probe_at  timestamp                -- when its board was last confirmed alive
-  active         boolean default true     -- false once the board stops returning jobs
+  active         boolean default true     -- false after a definitive 404/410 board response
   blocked        boolean default false    -- set by "never show this company"
   notes          text
   created_at     timestamp
@@ -83,9 +83,9 @@ source_polls (
   company_id            integer fk -> companies
   source                text not null
   etag                  text
-  last_fetched_at       timestamp          -- includes failed attempts; drives cadence
+  last_fetched_at       timestamp          -- includes failed attempts
   last_successful_at    timestamp
-  next_poll_at          timestamp          -- normal cadence or bounded failure backoff
+  next_poll_at          timestamp          -- drives normal cadence or bounded failure backoff
   consecutive_failures  integer default 0
   last_status           text
   last_error            text
@@ -213,7 +213,7 @@ Daily LLM cost is therefore ~6 invocations, not 10,000. Never add an "enrich eve
 
 **`companies` is populated by discovery, not by hand** ([ADR-0010](adr/0010-company-discovery.md)). `discovered_via` matters for debugging — when a batch of junk companies appears, it tells you which mechanism produced them. `tier` is optional and stays at its default for almost every row.
 
-**`active` vs `blocked` are different things.** `active = false` means the board stopped responding. `blocked = true` means you never want to see it. Never conflate them: a blocked company's board is still alive, and an inactive one may come back.
+**`active` vs `blocked` are different things.** `active = false` means a board returned a definitive 404/410 and its jobs leave the current review list. `blocked = true` means you never want to see it. Never conflate them: a blocked company's board is still alive, and an inactive one may come back.
 
 **`extraction_rules.fail_count` is the self-healing trigger.** Consecutive zero-row runs mean the page was redesigned, not that the company has no openings. Regenerate the selectors when it crosses the threshold, and log it.
 
@@ -227,11 +227,11 @@ Daily LLM cost is therefore ~6 invocations, not 10,000. Never add an "enrich eve
 
 **`llm_score` is nullable on purpose.** A run where some batches failed to parse is a normal outcome. Those jobs fall back to `retrieval_score` for ordering.
 
-**Canonical rows via `canonical_id`, not deletion.** Keep every source's copy. One is canonical, the rest point at it. Preserves provenance and lets you compare what different sources reported for the same role.
+**Canonical rows via `canonical_id`, not deletion.** Keep every source's copy. One is canonical, the rest point at it. Preserves provenance and lets you compare what different sources reported for the same role. Recompute the group whenever a copy changes or closes, so an open duplicate always remains visible.
 
 **`last_seen_at` / `missing_since_at` / `closed_at` instead of hard delete.** Postings vanish silently. The first successful poll that omits a job records `missing_since_at`; the second consecutive successful omission sets `closed_at`. A later observation clears both fields. Never delete — historical postings are the dataset for the outcome loop.
 
-**`source_polls` keeps transport state out of the source adapter.** An adapter receives a cached ETag and returns a new ETag, but has no database dependency. The worker persists that validator together with cadence and failure state, so a 304 skips ingest/staleness work while failed requests are not immediately retried in a tight loop.
+**`source_polls` keeps transport state out of the source adapter.** An adapter receives a cached ETag and returns a new ETag, but has no database dependency. The worker persists that validator together with cadence and failure state, so a 304 skips ingest/staleness work while a retryable failure defers the whole source until its persisted cooldown expires.
 
 **`events` is append-only.** Status lives on `applications` for querying; the transition history lives in `events`. Do not reconstruct one from the other.
 

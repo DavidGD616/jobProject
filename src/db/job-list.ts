@@ -77,6 +77,7 @@ function whereFor(
   const conditions: SQL[] = [
     isNull(jobs.closedAt),
     isNull(jobs.canonicalId),
+    eq(companies.active, true),
     eq(companies.blocked, false),
   ];
   if (filters.company) conditions.push(eq(companies.slug, filters.company));

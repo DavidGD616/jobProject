@@ -16,6 +16,7 @@ import type {
 const DEFAULT_TIMEOUT_MS = 20_000;
 const FIRST_FAILURE_DELAY_MS = 60_000;
 const MAX_FAILURE_DELAY_MS = 60 * 60 * 1_000;
+const MAX_CONSECUTIVE_SOURCE_FAILURES = 2;
 
 /**
  * Type-erased view of a registered source. It keeps the worker generic while
@@ -112,6 +113,26 @@ function isMissingBoard(status: number | undefined): boolean {
   return status === 404 || status === 410;
 }
 
+function isRetryableSourceFailure(status: number | undefined): boolean {
+  // An error without an HTTP status is normally a network, timeout, or invalid
+  // upstream response. Treat repeated occurrences as a source-level signal too.
+  return status === undefined || status === 429 || status >= 500;
+}
+
+function sourceErrorRetryDelay(cause: unknown): number | undefined {
+  if (
+    typeof cause === "object" &&
+    cause !== null &&
+    "retryDelayMs" in cause &&
+    typeof cause.retryDelayMs === "number" &&
+    Number.isFinite(cause.retryDelayMs) &&
+    cause.retryDelayMs >= 0
+  ) {
+    return cause.retryDelayMs;
+  }
+  return undefined;
+}
+
 function nextFailureAt(
   now: Date,
   consecutiveFailures: number,
@@ -182,6 +203,7 @@ export async function runSourcePolls(
     });
     summary.due += due.length;
     let paused = false;
+    let consecutiveSourceFailures = 0;
 
     for (const { company, poll } of due) {
       if (paused) break;
@@ -205,6 +227,7 @@ export async function runSourcePolls(
             fetchedAt: completedAt,
             nextPollAt: new Date(completedAt.valueOf() + source.cadenceMs),
           });
+          consecutiveSourceFailures = 0;
           summary.notModified += 1;
           continue;
         }
@@ -228,16 +251,23 @@ export async function runSourcePolls(
           fetchedAt: snapshotAt,
           nextPollAt: new Date(snapshotAt.valueOf() + source.cadenceMs),
         });
+        consecutiveSourceFailures = 0;
         mergeIngestSummary(summary, ingest);
         summary.fetched += 1;
       } catch (cause) {
         const completedAt = now();
         const status = sourceErrorStatus(cause);
+        const retryDelayMs = sourceErrorRetryDelay(cause);
         const failures = (poll?.consecutiveFailures ?? 0) + 1;
         const statusLabel = status ? `http_${status}` : "error";
         const missingBoard = isMissingBoard(status);
         const accessDenied = isAccessDenied(status);
 
+        const boundedFailureAt = nextFailureAt(
+          completedAt,
+          failures,
+          source.cadenceMs,
+        );
         recordSourcePollFailure(db, {
           companyId: company.id,
           source: source.id,
@@ -247,7 +277,12 @@ export async function runSourcePolls(
           fetchedAt: completedAt,
           nextPollAt: missingBoard
             ? null
-            : nextFailureAt(completedAt, failures, source.cadenceMs),
+            : new Date(
+              Math.max(
+                boundedFailureAt.valueOf(),
+                completedAt.valueOf() + (retryDelayMs ?? 0),
+              ),
+            ),
         });
         if (missingBoard) {
           deactivateCompanyBoard(db, {
@@ -256,7 +291,20 @@ export async function runSourcePolls(
           });
           summary.deactivated += 1;
         }
-        if (accessDenied) {
+        if (isRetryableSourceFailure(status)) {
+          consecutiveSourceFailures += 1;
+        } else {
+          consecutiveSourceFailures = 0;
+        }
+        // A final 429 already represents repeated rate limiting for this
+        // board, and two retryable failures across boards indicate a source
+        // problem. Stop dispatching for this source and leave its persisted
+        // nextPollAt values to control the next worker scan.
+        if (
+          accessDenied ||
+          status === 429 ||
+          consecutiveSourceFailures >= MAX_CONSECUTIVE_SOURCE_FAILURES
+        ) {
           paused = true;
           summary.pausedSources.push(source.id);
         }
