@@ -1,5 +1,7 @@
 export { db, sqlite } from "./client";
 export * from "./schema";
+export { listOpenJobs, parseJobListFilters } from "./job-list";
+export type { DateWindow, JobListData, JobListFilters, JobListItem } from "./job-list";
 export {
   ingestObservedPostings,
   ingestSourceSnapshot,

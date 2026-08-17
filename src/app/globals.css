@@ -1,13 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --paper: #fffaf0;
+  --paper-deep: #f1e8d6;
+  --ink: #1d2b32;
+  --ink-soft: #34464b;
+  --muted: #6f6b60;
+  --rust: #b84a28;
+  --signal: #e5c95c;
+  --ledger-border: #d8c8aa;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
 }
 
 * {
@@ -21,7 +27,131 @@ body {
 
 body {
   margin: 0;
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(229, 201, 92, 0.18), transparent 24rem),
+    radial-gradient(circle at 90% 0%, rgba(184, 74, 40, 0.1), transparent 30rem),
+    #e9dfcd;
+  color: var(--ink);
+  font-family: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+}
+
+::selection {
+  background: var(--signal);
+  color: var(--ink);
+}
+
+.font-serif {
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, serif;
+}
+
+.font-mono {
+  font-family: "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
+}
+
+.ledger-masthead {
+  background:
+    linear-gradient(115deg, rgba(229, 201, 92, 0.1), transparent 38%),
+    #1d2b32;
+}
+
+.ledger-masthead::after {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 250, 240, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 250, 240, 0.045) 1px, transparent 1px);
+  background-size: 22px 22px;
+  content: "";
+  pointer-events: none;
+}
+
+.ledger-control {
+  width: 100%;
+  border: 1px solid var(--ledger-border);
+  border-radius: 0;
+  background: rgba(255, 250, 240, 0.76);
+  color: var(--ink);
+  min-height: 2.8rem;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.ledger-control::placeholder {
+  color: #8e897e;
+}
+
+.ledger-control:focus {
+  border-color: var(--rust);
+  background: var(--paper);
+  box-shadow: 3px 3px 0 rgba(184, 74, 40, 0.16);
+}
+
+.ledger-button {
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--ink);
+  color: var(--paper);
+  cursor: pointer;
+  min-height: 2.9rem;
+  padding: 0.7rem 1rem;
+  font-family: "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition: background-color 140ms ease, transform 140ms ease;
+}
+
+.ledger-button:hover {
+  background: var(--rust);
+}
+
+.ledger-button:focus-visible {
+  outline: 2px solid var(--rust);
+  outline-offset: 3px;
+}
+
+.ledger-button:active {
+  transform: translate(1px, 1px);
+}
+
+.ledger-tag {
+  border: 1px solid var(--ledger-border);
+  background: rgba(255, 250, 240, 0.68);
+  color: var(--ink-soft);
+  padding: 0.28rem 0.48rem;
+  font-family: "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.ledger-tag-signal {
+  border-color: #84aa94;
+  background: #e3f0e5;
+  color: #1f6849;
+}
+
+.job-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 11rem;
+  transition: background-color 140ms ease;
+}
+
+.job-row:hover {
+  background: rgba(241, 232, 214, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
