@@ -275,6 +275,97 @@ export const triage = sqliteTable(
   ],
 );
 
+export const resumeVariants = sqliteTable(
+  "resume_variants",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    jobId: integer("job_id").notNull().references(() => jobs.id),
+    resumeJson: text("resume_json", { mode: "json" }).$type<ResumeProfileJson>().notNull(),
+    coverLetter: text("cover_letter"),
+    pdfPath: text("pdf_path"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("resume_variants_job_idx").on(table.jobId, table.createdAt)],
+);
+
+export const applications = sqliteTable(
+  "applications",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    jobId: integer("job_id").notNull().references(() => jobs.id),
+    status: text("status").notNull().default("draft"),
+    appliedAt: integer("applied_at", { mode: "timestamp_ms" }),
+    resumeVariantId: integer("resume_variant_id").references(() => resumeVariants.id),
+    coverLetter: text("cover_letter"),
+    nextFollowupAt: integer("next_followup_at", { mode: "timestamp_ms" }),
+    notes: text("notes"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("applications_job_uq").on(table.jobId),
+    index("applications_status_followup_idx").on(table.status, table.nextFollowupAt),
+  ],
+);
+
+export const events = sqliteTable(
+  "events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    applicationId: integer("application_id").notNull().references(() => applications.id),
+    type: text("type").notNull(),
+    occurredAt: integer("occurred_at", { mode: "timestamp_ms" }).notNull(),
+    payload: text("payload", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  },
+  (table) => [index("events_application_occurred_idx").on(table.applicationId, table.occurredAt)],
+);
+
+export const contacts = sqliteTable(
+  "contacts",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    companyId: integer("company_id").notNull().references(() => companies.id),
+    name: text("name"),
+    role: text("role"),
+    email: text("email"),
+    linkedin: text("linkedin"),
+    notes: text("notes"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("contacts_company_idx").on(table.companyId)],
+);
+
+/** A durable record of a form-fill attempt. It always ends before submission. */
+export const applicationRuns = sqliteTable(
+  "application_runs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    applicationId: integer("application_id").notNull().references(() => applications.id),
+    adapter: text("adapter").notNull(),
+    status: text("status").notNull(),
+    fields: text("fields", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+    startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
+    finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
+    error: text("error"),
+  },
+  (table) => [index("application_runs_application_idx").on(table.applicationId, table.startedAt)],
+);
+
+export const rankingFeedback = sqliteTable(
+  "ranking_feedback",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    jobId: integer("job_id").notNull().references(() => jobs.id),
+    profileId: integer("profile_id").notNull().references(() => profiles.id),
+    outcome: text("outcome").notNull(),
+    features: text("features", { mode: "json" }).$type<Record<string, number>>().notNull(),
+    retrievalScore: real("retrieval_score").notNull(),
+    llmScore: integer("llm_score"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("ranking_feedback_profile_idx").on(table.profileId, table.createdAt)],
+);
+
 export type Company = typeof companies.$inferSelect;
 export type NewCompany = typeof companies.$inferInsert;
 export type Job = typeof jobs.$inferSelect;
@@ -289,3 +380,15 @@ export type Match = typeof matches.$inferSelect;
 export type NewMatch = typeof matches.$inferInsert;
 export type Triage = typeof triage.$inferSelect;
 export type NewTriage = typeof triage.$inferInsert;
+export type ResumeVariant = typeof resumeVariants.$inferSelect;
+export type NewResumeVariant = typeof resumeVariants.$inferInsert;
+export type Application = typeof applications.$inferSelect;
+export type NewApplication = typeof applications.$inferInsert;
+export type Event = typeof events.$inferSelect;
+export type NewEvent = typeof events.$inferInsert;
+export type Contact = typeof contacts.$inferSelect;
+export type NewContact = typeof contacts.$inferInsert;
+export type ApplicationRun = typeof applicationRuns.$inferSelect;
+export type NewApplicationRun = typeof applicationRuns.$inferInsert;
+export type RankingFeedback = typeof rankingFeedback.$inferSelect;
+export type NewRankingFeedback = typeof rankingFeedback.$inferInsert;

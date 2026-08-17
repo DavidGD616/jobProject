@@ -43,6 +43,13 @@
       "when": 1786996908059,
       "tag": "0005_soft_miracleman",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1786997448214,
+      "tag": "0006_remarkable_white_queen",
+      "breakpoints": true
     }
   ]
 }

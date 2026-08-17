@@ -6,6 +6,12 @@ import { db } from "@/db";
 import { ensureActiveProfile, saveProfile } from "@/matching";
 import { recordTriage } from "@/matching/triage";
 import { retrieveMatches } from "@/matching/retrieve";
+import {
+  applicationStatuses,
+  createApplication,
+  saveContact,
+  updateApplication,
+} from "@/tracking";
 
 function text(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -85,4 +91,43 @@ export async function triageAction(formData: FormData): Promise<void> {
     database: db,
   });
   redirect("/review?saved=1");
+}
+
+export async function createApplicationAction(formData: FormData): Promise<void> {
+  const jobId = Number(text(formData, "job_id"));
+  if (!Number.isInteger(jobId)) redirect("/pipeline?error=Invalid+job");
+  createApplication({ jobId, notes: text(formData, "notes") || null, database: db });
+  redirect("/pipeline?saved=1");
+}
+
+export async function updateApplicationAction(formData: FormData): Promise<void> {
+  const id = Number(text(formData, "application_id"));
+  const status = text(formData, "status");
+  if (!Number.isInteger(id) || !applicationStatuses.includes(status as (typeof applicationStatuses)[number])) {
+    redirect("/pipeline?error=Invalid+application+update");
+  }
+  const followup = text(formData, "next_followup");
+  updateApplication({
+    id,
+    status: status as (typeof applicationStatuses)[number],
+    notes: text(formData, "notes") || null,
+    nextFollowupAt: followup ? new Date(`${followup}T09:00:00.000Z`) : null,
+    database: db,
+  });
+  redirect("/pipeline?saved=1");
+}
+
+export async function addContactAction(formData: FormData): Promise<void> {
+  const companyId = Number(text(formData, "company_id"));
+  if (!Number.isInteger(companyId)) redirect("/pipeline?error=Invalid+company");
+  saveContact({
+    companyId,
+    name: text(formData, "name"),
+    role: text(formData, "role"),
+    email: text(formData, "email"),
+    linkedin: text(formData, "linkedin"),
+    notes: text(formData, "contact_notes"),
+    database: db,
+  });
+  redirect("/pipeline?saved=1");
 }
