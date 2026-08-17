@@ -7,7 +7,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 
 import { applicationRuns, applications, companies, contacts, events, jobs, llmRuns, matches, profiles, rankingFeedback, resumeVariants, sourcePolls, triage } from "@/db/schema";
-import { adapterForUrl, prepareApplication } from "@/apply";
+import { adapterForUrl, fillApplicationPlan, prepareApplication } from "@/apply";
 import { saveProfile } from "@/matching";
 import { createApplication } from "@/tracking";
 
@@ -36,4 +36,25 @@ test("ATS adapters prepare fields and enforce the human submission stop", async 
   } finally {
     sqlite.close();
   }
+});
+
+test("browser boundary fills only declared fields and has no submit operation", async () => {
+  const calls: string[] = [];
+  const page = {
+    goto: async (url: string) => { calls.push(`goto:${url}`); },
+    fill: async (selector: string, value: string) => { calls.push(`fill:${selector}:${value}`); },
+    setInputFiles: async (selector: string, path: string) => { calls.push(`file:${selector}:${path}`); },
+  };
+  const result = await fillApplicationPlan(page, {
+    adapter: "greenhouse",
+    url: "https://example.com/apply",
+    fields: [
+      { key: "email", label: "Email", value: "a@example.com", selector: "#email", required: true, source: "profile" },
+      { key: "resume", label: "Resume", value: "/tmp/resume.pdf", selector: "input[type=file]", required: true, source: "resume_variant" },
+      { key: "question", label: "Question", value: null, selector: null, required: true, source: "human" },
+    ],
+    customQuestions: [], submissionBlocked: true, instructions: [],
+  });
+  assert.deepEqual(result, { filled: ["email", "resume"], skipped: ["question"], submissionBlocked: true });
+  assert.equal(calls.length, 3);
 });
