@@ -4,7 +4,7 @@ Local-only job-hunt agent: discover companies, aggregate openings from official 
 
 **This file is canonical for every coding agent.** `CLAUDE.md` imports it. Do not duplicate its content anywhere — update it here.
 
-**Status:** Phase 1 in progress. The scaffold, SQLite schema, source contract, and Greenhouse adapter are in place — see [docs/05-roadmap.md](docs/05-roadmap.md).
+**Status:** Phase 1 in progress. The scaffold, SQLite schema, source contract, Greenhouse adapter, and bulk discovery probe are in place — see [docs/05-roadmap.md](docs/05-roadmap.md).
 
 **Stack:** TypeScript on Node 24 · pnpm · SQLite + FTS5 (WAL) · Next.js · Drizzle · Playwright (Chromium only) · LLM via installed CLIs.
 

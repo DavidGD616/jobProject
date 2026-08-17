@@ -4,6 +4,8 @@ import {
   delay,
 } from "../rate-limit";
 import type { SourceRequestLimiter } from "../rate-limit";
+import { fetchRobotsPolicy } from "../robots";
+import type { RobotsPolicy } from "../robots";
 
 import { greenhouseSourceConfig } from "./config";
 import { greenhouseResponseSchema } from "./schema";
@@ -31,6 +33,8 @@ export interface GreenhouseFetchDependencies {
   fetchImpl?: typeof globalThis.fetch;
   sleep?: typeof delay;
   requestLimiter?: SourceRequestLimiter;
+  /** Injectable policy for deterministic tests or a pre-approved source. */
+  robotsPolicy?: RobotsPolicy;
 }
 
 export class GreenhouseFetchError extends Error {
@@ -127,7 +131,10 @@ function assertValidTimeout(config: GreenhouseFetchConfig, url: string): void {
 
 async function fetchBoard(
   config: GreenhouseFetchConfig,
-  dependencies: Required<GreenhouseFetchDependencies>,
+  dependencies: Pick<
+    Required<GreenhouseFetchDependencies>,
+    "fetchImpl" | "sleep" | "requestLimiter"
+  >,
 ): Promise<SourceFetchResult<GreenhouseJob>> {
   const token = config.company.atsToken?.trim();
   if (!token) {
@@ -227,17 +234,74 @@ export function createGreenhouseFetcher(
 ): (
   config: GreenhouseFetchConfig,
 ) => Promise<SourceFetchResult<GreenhouseJob>> {
-  const dependencies: Required<GreenhouseFetchDependencies> = {
+  const dependencies = {
     fetchImpl: overrides.fetchImpl ?? globalThis.fetch,
     sleep: overrides.sleep ?? delay,
     requestLimiter: overrides.requestLimiter ?? greenhouseRequestLimiter,
   };
+  const injectedRobotsPolicy = overrides.robotsPolicy;
+  const robotsPolicies = new Map<string, Promise<RobotsPolicy>>();
 
-  return (config) =>
-    dependencies.requestLimiter.run(
+  async function ensureRobotsPolicy(
+    config: GreenhouseFetchConfig,
+    url: string,
+  ): Promise<void> {
+    let robotsPolicy = injectedRobotsPolicy;
+    if (!robotsPolicy) {
+      let policy = robotsPolicies.get(config.userAgent);
+      if (!policy) {
+        const loadedPolicy = fetchRobotsPolicy(
+          {
+            targetUrl: url,
+            userAgent: config.userAgent,
+            timeoutMs: config.timeoutMs,
+            maxAttempts: normalizedMaxAttempts(config.maxAttempts),
+            retryBaseDelayMs: normalizedBaseDelay(config.retryBaseDelayMs),
+            signal: config.signal,
+          },
+          {
+            fetchImpl: dependencies.fetchImpl,
+            sleep: dependencies.sleep,
+            requestLimiter: dependencies.requestLimiter,
+          },
+        );
+        policy = loadedPolicy.catch((cause) => {
+          robotsPolicies.delete(config.userAgent);
+          throw cause;
+        });
+        robotsPolicies.set(config.userAgent, policy);
+      }
+      robotsPolicy = await policy;
+    }
+    if (!robotsPolicy.allows(url)) {
+      throw new GreenhouseFetchError("robots.txt disallows this Greenhouse API path", {
+        url,
+      });
+    }
+    dependencies.requestLimiter.raiseMinRequestIntervalMs(
+      robotsPolicy.crawlDelayMs,
+    );
+  }
+
+  return async (config) => {
+    const token = config.company.atsToken?.trim();
+    if (token) {
+      const url = boardUrl(token);
+      try {
+        await ensureRobotsPolicy(config, url);
+      } catch (cause) {
+        if (cause instanceof GreenhouseFetchError) throw cause;
+        throw new GreenhouseFetchError("Greenhouse robots.txt policy could not be checked", {
+          url,
+          cause,
+        });
+      }
+    }
+    return dependencies.requestLimiter.run(
       () => fetchBoard(config, dependencies),
       config.signal,
     );
+  };
 }
 
 /** Fetch all currently published jobs from one public Greenhouse board. */

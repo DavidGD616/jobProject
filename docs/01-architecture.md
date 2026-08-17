@@ -119,6 +119,15 @@ verify(candidate) → Company | null        // probe the board; 404 → null
 
 `verify` is what makes discovery cheap: an ATS endpoint returns 200 with JSON for a real token and 404 otherwise, so wrong guesses cost one HTTP request.
 
+The initial unattended seed derives candidates from the latest 36 monthly HN
+hiring threads rather than a hand-maintained company file. Its
+conservative parser admits only top-level listings with an exact official
+Greenhouse, Lever, or Ashby board URL. Explicit `Company:` headings are
+accepted; pipe headings must normalize to that board's token, which excludes
+role, location, and person prefixes. The URL provides one ATS hint for the
+shared verifier; richer prose parsing waits for the batched, cached LLM harness
+in Phase 1.5.
+
 **LLM provider contract** — one adapter per installed CLI, in `src/llm/providers/`:
 
 ```
@@ -205,7 +214,7 @@ scripts/                 one-off maintenance
 
 - **Fixtures over live calls in tests.** Record one real response per source into `tests/fixtures/`, test `normalize` against it. Source APIs change; the fixture diff is how you find out.
 - **Cache every LLM result.** Key on `(task, content_hash, profile_version, provider, model, prompt_version)`. At CLI latency this is load-bearing, not an optimization.
-- **Every external call gets a timeout, retry with backoff, and a per-source rate limit.** No exceptions — one unbounded fetch loop against a public API is how you get IP-banned.
+- **Every external call gets a timeout, retry with backoff, and a per-source rate limit.** No exceptions — one unbounded fetch loop against a public API is how you get IP-banned. Before each source origin is used, its `robots.txt` policy is loaded and cached by the source client, its matching allow/disallow rules are enforced, and any stricter `Crawl-delay` raises the shared limiter floor.
 - **Every CLI invocation runs sandboxed.** Tools disabled, `cwd` set to an empty temp directory, hard timeout with kill on expiry. These are agentic tools doing a single-shot task; without this an agent pointed at this repo will read this repo.
 - **Per-provider concurrency cap of 1–2.** Fanning out processes against one subscription gets you rate-limited, and the limits are not observable from here.
 - **Never crash a batch on a parse failure.** Record `parse_failed`, continue, retry next run.
