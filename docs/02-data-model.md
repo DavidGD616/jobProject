@@ -69,10 +69,26 @@ jobs (
   posted_at      timestamp
   first_seen_at  timestamp not null
   last_seen_at   timestamp not null        -- bump every fetch that still lists it
+  missing_since_at timestamp                -- first successful poll that omitted it
   closed_at      timestamp                 -- set when it stops appearing
   content_hash   text not null             -- sha256(title_norm + company + description)
   canonical_id   integer fk -> jobs        -- null if this row IS canonical
   unique (source, source_id)
+)
+
+-- Per-company source request validators and outcomes. The scheduled worker
+-- reads the validator before polling and writes a result after every attempt.
+source_polls (
+  id                    integer pk
+  company_id            integer fk -> companies
+  source                text not null
+  etag                  text
+  last_fetched_at       timestamp          -- includes failed attempts; drives cadence
+  last_successful_at    timestamp
+  consecutive_failures  integer default 0
+  last_error            text
+  updated_at            timestamp not null
+  unique (company_id, source)
 )
 
 -- Your structured resume + search preferences. Small, versioned, hand-edited.
@@ -211,7 +227,9 @@ Daily LLM cost is therefore ~6 invocations, not 10,000. Never add an "enrich eve
 
 **Canonical rows via `canonical_id`, not deletion.** Keep every source's copy. One is canonical, the rest point at it. Preserves provenance and lets you compare what different sources reported for the same role.
 
-**`last_seen_at` / `closed_at` instead of hard delete.** Postings vanish silently. A job absent from two consecutive fetches gets `closed_at` set. Never delete — historical postings are the dataset for the outcome loop.
+**`last_seen_at` / `missing_since_at` / `closed_at` instead of hard delete.** Postings vanish silently. The first successful poll that omits a job records `missing_since_at`; the second consecutive successful omission sets `closed_at`. A later observation clears both fields. Never delete — historical postings are the dataset for the outcome loop.
+
+**`source_polls` keeps transport state out of the source adapter.** An adapter receives a cached ETag and returns a new ETag, but has no database dependency. The worker persists that validator together with cadence and failure state, so a 304 skips ingest/staleness work while failed requests are not immediately retried in a tight loop.
 
 **`events` is append-only.** Status lives on `applications` for querying; the transition history lives in `events`. Do not reconstruct one from the other.
 
@@ -236,8 +254,10 @@ jobs (company_id, posted_at desc)     -- browse by company
 jobs (content_hash)                    -- dedup layer 2
 jobs (closed_at) where closed_at null  -- open jobs only, the common filter
 jobs (last_seen_at)                    -- staleness sweep
+jobs (missing_since_at) where open     -- second-absence closure sweep
 companies (ats_type, active) where active  -- the fetch loop's driving query
 companies (blocked) where blocked          -- filter exclusions
+source_polls (source, last_fetched_at) -- source worker cadence
 FTS index on jobs.description_fts + title    -- stage 2a retrieval
 matches (retrieval_score desc)         -- ranked list without LLM
 matches (llm_score desc)               -- ranked list with LLM

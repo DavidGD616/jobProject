@@ -69,6 +69,11 @@ export const jobs = sqliteTable(
     postedAt: integer("posted_at", { mode: "timestamp_ms" }),
     firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(),
     lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
+    /**
+     * The first successful board poll on which this source posting was absent.
+     * A second successful absence closes it; an observed posting clears it.
+     */
+    missingSinceAt: integer("missing_since_at", { mode: "timestamp_ms" }),
     closedAt: integer("closed_at", { mode: "timestamp_ms" }),
     contentHash: text("content_hash").notNull(),
     canonicalId: integer("canonical_id").references(
@@ -84,7 +89,42 @@ export const jobs = sqliteTable(
     index("jobs_content_hash_idx").on(table.contentHash),
     index("jobs_closed_idx").on(table.closedAt).where(sql`closed_at IS NULL`),
     index("jobs_last_seen_idx").on(table.lastSeenAt),
+    index("jobs_missing_idx")
+      .on(table.missingSinceAt)
+      .where(sql`closed_at IS NULL AND missing_since_at IS NOT NULL`),
     index("jobs_canonical_idx").on(table.canonicalId),
+  ],
+);
+
+/**
+ * Per-company validators and outcomes for source polls. This keeps adapters
+ * database-independent while allowing the worker to issue conditional
+ * requests, respect cadence after failures, and explain a failed board.
+ */
+export const sourcePolls = sqliteTable(
+  "source_polls",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    companyId: integer("company_id")
+      .notNull()
+      .references(() => companies.id),
+    source: text("source").notNull(),
+    etag: text("etag"),
+    lastFetchedAt: integer("last_fetched_at", { mode: "timestamp_ms" }),
+    lastSuccessfulAt: integer("last_successful_at", { mode: "timestamp_ms" }),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    lastError: text("last_error"),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("source_polls_company_source_uq").on(
+      table.companyId,
+      table.source,
+    ),
+    index("source_polls_source_fetched_idx").on(
+      table.source,
+      table.lastFetchedAt,
+    ),
   ],
 );
 
@@ -92,3 +132,5 @@ export type Company = typeof companies.$inferSelect;
 export type NewCompany = typeof companies.$inferInsert;
 export type Job = typeof jobs.$inferSelect;
 export type NewJob = typeof jobs.$inferInsert;
+export type SourcePoll = typeof sourcePolls.$inferSelect;
+export type NewSourcePoll = typeof sourcePolls.$inferInsert;
