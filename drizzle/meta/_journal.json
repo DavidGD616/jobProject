@@ -29,6 +29,13 @@
       "when": 1786987321962,
       "tag": "0003_cultured_lockjaw",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786996604918,
+      "tag": "0004_right_silvermane",
+      "breakpoints": true
     }
   ]
 }

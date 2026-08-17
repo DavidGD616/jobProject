@@ -132,9 +132,46 @@ export const sourcePolls = sqliteTable(
   ],
 );
 
+/**
+ * Every structured CLI invocation is retained as both a cache entry and an
+ * audit record. The unique key deliberately includes the rendered prompt
+ * version so changing a prompt cannot reuse an old answer silently.
+ */
+export const llmRuns = sqliteTable(
+  "llm_runs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    task: text("task").notNull(),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    cliVersion: text("cli_version"),
+    promptHash: text("prompt_hash").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    rawOutput: text("raw_output"),
+    parsed: text("parsed", { mode: "json" }).$type<unknown>(),
+    status: text("status").notNull(),
+    attempt: integer("attempt").notNull().default(1),
+    durationMs: integer("duration_ms"),
+    error: text("error"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("llm_runs_cache_uq").on(
+      table.task,
+      table.promptHash,
+      table.provider,
+      table.model,
+      table.promptVersion,
+    ),
+    index("llm_runs_task_created_idx").on(table.task, table.createdAt),
+  ],
+);
+
 export type Company = typeof companies.$inferSelect;
 export type NewCompany = typeof companies.$inferInsert;
 export type Job = typeof jobs.$inferSelect;
 export type NewJob = typeof jobs.$inferInsert;
 export type SourcePoll = typeof sourcePolls.$inferSelect;
 export type NewSourcePoll = typeof sourcePolls.$inferInsert;
+export type LlmRun = typeof llmRuns.$inferSelect;
+export type NewLlmRun = typeof llmRuns.$inferInsert;

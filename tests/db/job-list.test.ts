@@ -7,11 +7,11 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 
 import { listOpenJobs, parseJobListFilters } from "@/db/job-list";
-import { companies, jobs, sourcePolls } from "@/db/schema";
+import { companies, jobs, llmRuns, sourcePolls } from "@/db/schema";
 
 function createTestDatabase() {
   const sqlite = new Database(":memory:");
-  const db = drizzle(sqlite, { schema: { companies, jobs, sourcePolls } });
+  const db = drizzle(sqlite, { schema: { companies, jobs, llmRuns, sourcePolls } });
   migrate(db, { migrationsFolder: resolve(process.cwd(), "drizzle") });
   return { db, sqlite };
 }
