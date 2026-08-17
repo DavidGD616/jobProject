@@ -13,6 +13,7 @@
     "discover:seed": "tsx src/discovery/cli.ts",
     "jobs:fetch": "tsx src/ingest/cli.ts",
     "jobs:watch": "tsx src/ingest/cli.ts --watch",
+    "career:fetch": "tsx src/ingest/career-cli.ts",
     "jobs:rank": "tsx src/matching/cli.ts",
     "tailor": "tsx src/tailor/cli.ts",
     "apply:prepare": "tsx src/apply/cli.ts",
