@@ -107,6 +107,8 @@ test("triage removes skipped roles and LLM rerank writes reasons plus extracted 
     assert.equal(stored.llmScore, 88);
     assert.equal(stored.reasoning, "Strong TypeScript overlap");
     assert.equal(db.select().from(jobs).get()?.salaryMin, 100000);
+    retrieveMatches(profile, { database: db, now });
+    assert.equal(db.select().from(matches).get()?.llmScore, 88);
     recordTriage({ jobId: job.id, profileId: profile.id, decision: "skip", database: db, now: new Date(now.valueOf() + 1_000) });
     assert.equal(retrieveMatches(profile, { database: db, now }).length, 0);
   } finally {

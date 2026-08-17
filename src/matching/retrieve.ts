@@ -102,6 +102,22 @@ function upsertMatch(database: JobHuntDatabase, input: {
   retrieval: number;
   now: Date;
 }): void {
+  const existing = database.select({ profileVersion: matches.profileVersion })
+    .from(matches)
+    .where(and(eq(matches.jobId, input.jobId), eq(matches.profileId, input.profileId)))
+    .get();
+  if (existing?.profileVersion === input.profileVersion) {
+    // Retrieval refreshes are frequent and should not erase a valid stage-3 or
+    // learned score when the profile itself has not changed.
+    database.update(matches).set({
+      profileVersion: input.profileVersion,
+      lexicalScore: input.lexical,
+      featureScore: input.feature,
+      retrievalScore: input.retrieval,
+      scoredAt: input.now,
+    }).where(and(eq(matches.jobId, input.jobId), eq(matches.profileId, input.profileId))).run();
+    return;
+  }
   database.insert(matches).values({
     jobId: input.jobId,
     profileId: input.profileId,
