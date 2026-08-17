@@ -11,7 +11,7 @@ import { applicationRuns, applications, companies, contacts, events, extractionR
 import { createClaudeProvider } from "@/llm/providers/claude";
 import { benchmarkProviders } from "@/llm/bench";
 import { extractJsonCandidate, parseStructured } from "@/llm/parser";
-import { ProviderProcessError } from "@/llm/process";
+import { ProviderProcessError, runCli } from "@/llm/process";
 import { runStructured } from "@/llm/structured";
 import type { LlmProvider, ProviderResult } from "@/llm/types";
 
@@ -117,6 +117,21 @@ test("Claude provider uses the installed CLI contract without shell interpolatio
   const provider = createClaudeProvider("definitely-not-installed");
   assert.equal(provider.id, "claude");
   assert.equal(provider.capabilities().structuredOutput, true);
+});
+
+test("provider subprocesses reject an already-aborted signal before spawning", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    runCli(process.execPath, ["-e", "process.stdout.write('should not run')"], {
+      timeoutMs: 1_000,
+      signal: controller.signal,
+    }),
+    (cause: unknown) =>
+      cause instanceof ProviderProcessError &&
+      cause.status === "timeout" &&
+      cause.message === "provider invocation aborted",
+  );
 });
 
 test("benchmark reports successes and parse-like failures without database writes", async () => {

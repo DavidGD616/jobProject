@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
 export class ProviderProcessError extends Error {
   readonly status: "timeout" | "rate_limited" | "error";
   readonly rawOutput: string;
@@ -50,7 +52,17 @@ export async function runCli(
   args: readonly string[],
   options: { timeoutMs: number; signal?: AbortSignal },
 ): Promise<CliInvocationResult> {
+  if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 0 || options.timeoutMs > MAX_TIMEOUT_MS) {
+    throw new RangeError(`timeoutMs must be an integer from 0 to ${MAX_TIMEOUT_MS}`);
+  }
   const cwd = await mkdtemp(join(tmpdir(), "job-hunt-llm-"));
+  if (options.signal?.aborted) {
+    await rm(cwd, { recursive: true, force: true });
+    throw new ProviderProcessError({
+      message: "provider invocation aborted",
+      status: "timeout",
+    });
+  }
   const startedAt = Date.now();
   const child = spawn(command, [...args], {
     cwd,
@@ -70,6 +82,8 @@ export async function runCli(
     killProcessGroup(child);
   };
   options.signal?.addEventListener("abort", abort, { once: true });
+  // Abort may have fired between the pre-spawn check and listener registration.
+  if (options.signal?.aborted) abort();
 
   try {
     const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
