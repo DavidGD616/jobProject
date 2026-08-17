@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import { applicationRuns, applications, companies, contacts, events, jobs, llmRuns, matches, profiles, rankingFeedback, resumeVariants, sourcePolls, triage } from "@/db/schema";
 import { createClaudeProvider } from "@/llm/providers/claude";
+import { benchmarkProviders } from "@/llm/bench";
 import { extractJsonCandidate, parseStructured } from "@/llm/parser";
 import { ProviderProcessError } from "@/llm/process";
 import { runStructured } from "@/llm/structured";
@@ -116,4 +117,10 @@ test("Claude provider uses the installed CLI contract without shell interpolatio
   const provider = createClaudeProvider("definitely-not-installed");
   assert.equal(provider.id, "claude");
   assert.equal(provider.capabilities().structuredOutput, true);
+});
+
+test("benchmark reports successes and parse-like failures without database writes", async () => {
+  const provider = fakeProvider("claude", [result('{"ok":true}'), result("not JSON")]);
+  const report = await benchmarkProviders({ providers: [provider], samples: [{ id: "1", description: "one" }, { id: "2", description: "two" }] });
+  assert.deepEqual(report[0] && { attempted: report[0].attempted, succeeded: report[0].succeeded, failed: report[0].failed, parseLikeFailures: report[0].parseLikeFailures }, { attempted: 2, succeeded: 1, failed: 1, parseLikeFailures: 1 });
 });

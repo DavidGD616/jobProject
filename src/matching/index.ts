@@ -12,3 +12,4 @@ export type { RankedMatch } from "./retrieve";
 export { listRecentTriage, recordTriage, triageDecisions } from "./triage";
 export type { TriageDecision } from "./triage";
 export { rerankMatches } from "./rerank";
+export { expandProfileQuery, fewShotExamples } from "./query";

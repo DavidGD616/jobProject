@@ -17,6 +17,7 @@
     "tailor": "tsx src/tailor/cli.ts",
     "apply:prepare": "tsx src/apply/cli.ts",
     "jobs:learn": "tsx src/learning/cli.ts",
+    "llm:bench": "tsx src/llm/bench-cli.ts",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
     "db:migrate": "tsx src/db/migrate.ts"
   },

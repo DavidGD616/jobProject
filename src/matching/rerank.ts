@@ -9,6 +9,7 @@ import { runStructured } from "@/llm";
 import type { LlmProvider } from "@/llm";
 
 import type { RankedMatch } from "./retrieve";
+import { fewShotExamples } from "./query";
 
 const extractedSchema = z.object({
   salary_min: z.number().int().nullable().optional(),
@@ -34,11 +35,13 @@ const rerankResponseSchema = z.union([
   z.object({ results: z.array(rerankItemSchema) }).transform((value) => value.results),
 ]);
 
-function promptFor(profile: Profile, batch: RankedMatch[]): string {
+function promptFor(profile: Profile, batch: RankedMatch[], database: JobHuntDatabase): string {
+  const examples = fewShotExamples(profile.id, database);
   return [
     "You are ranking job postings against a candidate profile.",
     "Return ONLY a JSON array. Score 90-100 means unusually strong fit; 40 means plausible but significant gaps; below 25 means poor fit.",
     `Candidate profile: ${JSON.stringify(profile)}`,
+    examples.length > 0 ? `Recent human labels (use as weak examples, not rules): ${JSON.stringify(examples)}` : "No human labels yet.",
     "Roles:",
     ...batch.map((match) => JSON.stringify({
       job_id: match.job.id,
@@ -80,7 +83,7 @@ export async function rerankMatches(input: {
     const batch = input.matches.slice(offset, offset + batchSize);
     const result = await runStructured({
       task: "rerank",
-      prompt: promptFor(input.profile, batch),
+      prompt: promptFor(input.profile, batch, database),
       promptVersion: "rerank-v1",
       schema: rerankResponseSchema,
       providers: input.providers,
