@@ -208,14 +208,26 @@ export default async function Home({ searchParams }: PageProps) {
             ) : (
               <div className="grid min-h-[420px] place-items-center px-6 py-14 text-center sm:px-10">
                 <div className="max-w-sm">
-                  <p className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.2em] text-[var(--rust)]">The ledger is quiet</p>
-                  <h3 className="mt-3 font-serif text-3xl tracking-[-0.04em] text-[var(--ink)]">Bring in the first board run.</h3>
-                  <p className="mt-4 text-sm leading-6 text-[var(--muted)]">
-                    Run discovery and the local worker, then return here to filter the openings it found.
+                  <p className="font-mono text-[0.66rem] font-bold uppercase tracking-[0.2em] text-[var(--rust)]">
+                    {hasFilters ? "Nothing in this cut" : "The ledger is quiet"}
                   </p>
-                  <code className="mt-6 inline-block border border-[var(--ledger-border)] bg-[var(--paper-deep)] px-4 py-3 font-mono text-xs text-[var(--ink)]">
-                    pnpm discover:seed && pnpm jobs:fetch
-                  </code>
+                  <h3 className="mt-3 font-serif text-3xl tracking-[-0.04em] text-[var(--ink)]">
+                    {hasFilters ? "No opening matches these filters." : "Bring in the first board run."}
+                  </h3>
+                  <p className="mt-4 text-sm leading-6 text-[var(--muted)]">
+                    {hasFilters
+                      ? "Broaden the title or date window, or return to every live board."
+                      : "Run discovery and the local worker, then return here to filter the openings it found."}
+                  </p>
+                  {hasFilters ? (
+                    <Link className="ledger-button mt-6 inline-flex items-center justify-center" href="/">
+                      Clear filters
+                    </Link>
+                  ) : (
+                    <code className="mt-6 inline-block border border-[var(--ledger-border)] bg-[var(--paper-deep)] px-4 py-3 font-mono text-xs text-[var(--ink)]">
+                      pnpm discover:seed && pnpm jobs:fetch
+                    </code>
+                  )}
                 </div>
               </div>
             )}
