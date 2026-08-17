@@ -30,9 +30,15 @@ export async function fillApplicationPlan(
       skipped.push(field.key);
       continue;
     }
-    if (field.key === "resume") await page.setInputFiles(field.selector, field.value);
-    else await page.fill(field.selector, field.value);
-    filled.push(field.key);
+    try {
+      if (field.key === "resume") await page.setInputFiles(field.selector, field.value);
+      else await page.fill(field.selector, field.value);
+      filled.push(field.key);
+    } catch {
+      // A site redesign or a custom field should remain visible to the human
+      // reviewer instead of aborting every other declared field.
+      skipped.push(field.key);
+    }
   }
   return { filled, skipped, submissionBlocked: true };
 }
