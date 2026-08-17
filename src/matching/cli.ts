@@ -24,6 +24,7 @@ export function parseArgs(args: readonly string[]): Options {
   const options: Options = { limit: 60, rerank: false, expand: false };
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
+    if (argument === "--") continue;
     if (argument === "--rerank") options.rerank = true;
     else if (argument === "--expand") options.expand = true;
     else if (argument === "--limit") options.limit = positiveInteger(args[++index] ?? "", "--limit");

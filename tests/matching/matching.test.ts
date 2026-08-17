@@ -14,6 +14,7 @@ import {
   rerankMatches,
   saveProfile,
 } from "@/matching";
+import { parseArgs } from "@/matching/cli";
 import type { LlmProvider, ProviderResult } from "@/llm";
 
 function createTestDatabase() {
@@ -40,6 +41,14 @@ function fakeProvider(text: string): LlmProvider {
     run: async () => result,
   };
 }
+
+test("rank CLI accepts pnpm's argument separator", () => {
+  assert.deepEqual(parseArgs(["--", "--limit", "20", "--rerank"]), {
+    limit: 20,
+    rerank: true,
+    expand: false,
+  });
+});
 
 test("profile versions invalidate retrieval rows and lexical matching is explainable", () => {
   const { db, sqlite } = createTestDatabase();
