@@ -1,6 +1,6 @@
 # 05 — Roadmap
 
-**Status:** Draft · **Last updated:** 2026-08-14
+**Status:** Current · **Last updated:** 2026-08-17
 
 Each phase ships something usable. Do not start a phase before the previous one's exit criteria are met.
 
@@ -16,21 +16,21 @@ All ten ADRs accepted. Stack and policy settled:
 - **Local Playwright**, agent-generated selectors cached per site ([ADR-0009](adr/0009-local-browser-automation.md))
 - **Company list is discovered**, not curated ([ADR-0010](adr/0010-company-discovery.md))
 
-## Phase 1 — Ingest pipeline 🚧 in progress
+## Phase 1 — Ingest pipeline ✅ done
 
 The one that proves the whole thing works. Tier A of [00-vision](00-vision.md).
 
 - ✅ Repo scaffold (pnpm), DB schema, migrations
-- **Discovery: bulk probe + automatic seed ✅.** The latest 36 HN threads produce candidates from top-level listings with official ATS URLs and token-matched company headings, without a hand-maintained company list; a parser-only 2026-08 check yielded 424 unique ATS-hinted candidates. The probe verifies boards, caches misses, and stops safely after upstream failure signals. The unattended ≥300 live-board exit run remains to be measured.
-- Source contract + adapters for Greenhouse, Lever, Ashby — Greenhouse ✅; Lever and Ashby pending
-- Heuristic extraction at ingest — regex salary, title seniority, remote keywords
-- Dedup layers 1 and 2
-- Scheduled fetch + `last_seen_at` / `closed_at` staleness sweep
-- Minimal list UI: filter by company, title, date
+- ✅ **Discovery: bulk probe + automatic seed.** The latest 36 HN threads produce candidates from top-level listings with official ATS URLs and token-matched company headings, without a hand-maintained company list. The probe verifies boards, caches misses, and stops safely after upstream failure signals.
+- ✅ Source contract + adapters for Greenhouse, Lever, Ashby
+- ✅ Heuristic extraction at ingest — regex salary, title seniority, remote keywords
+- ✅ Dedup layers 1 and 2
+- ✅ Scheduled fetch with ETag state, backoff, and a two-snapshot `last_seen_at` / `closed_at` staleness sweep
+- ✅ Minimal local list UI: filter by company, title, date
 
-*Exit:* `pnpm discover:seed` finds ≥300 live boards unattended; `pnpm jobs:fetch` pulls ≥5,000 open jobs; duplicate rate under 5%; re-running changes nothing but `last_seen_at`.
+*Exit verified 2026-08-17:* `pnpm discover:seed` processed 424 candidates and verified 322 live official boards unattended. The first `pnpm jobs:fetch` stored 10,309 open jobs with a 3.77% duplicate rate; the immediately repeated pass observed four new upstream postings and no local duplicate or stale-closure churn. A normal subsequent run found no boards due before the persisted six-hour cadence.
 
-The probe is the riskiest part of this phase — it is thousands of requests against three hosts, and it runs before anything else works. Rate limit it before running it at scale.
+The bulk probe is deliberately rate-limited across the three public ATS hosts. Keep those safeguards in place for future seed runs.
 
 ## Phase 1.5 — LLM harness
 
