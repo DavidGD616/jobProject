@@ -2,6 +2,8 @@ import Link from "next/link";
 
 import { listOpenJobs, parseJobListFilters } from "@/db/job-list";
 
+import { AppNav } from "./nav";
+
 export const runtime = "nodejs";
 
 type PageProps = {
@@ -56,6 +58,7 @@ export default async function Home({ searchParams }: PageProps) {
   return (
     <main className="min-h-screen px-4 py-4 sm:px-7 sm:py-7 lg:px-10 lg:py-10">
       <div className="ledger-shell mx-auto max-w-[1480px] overflow-hidden border border-[var(--ledger-border)] bg-[var(--paper)] shadow-[0_24px_80px_rgba(45,35,17,0.12)]">
+        <AppNav />
         <header className="ledger-masthead relative overflow-hidden px-6 py-7 text-[var(--paper)] sm:px-9 sm:py-9 lg:px-12">
           <div className="relative flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
             <div>
