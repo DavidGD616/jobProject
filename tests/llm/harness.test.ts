@@ -7,7 +7,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { z } from "zod";
 
-import { companies, jobs, llmRuns, sourcePolls } from "@/db/schema";
+import { companies, jobs, llmRuns, matches, profiles, sourcePolls, triage } from "@/db/schema";
 import { createClaudeProvider } from "@/llm/providers/claude";
 import { extractJsonCandidate, parseStructured } from "@/llm/parser";
 import { ProviderProcessError } from "@/llm/process";
@@ -18,7 +18,7 @@ const answerSchema = z.object({ answer: z.string() });
 
 function createTestDatabase() {
   const sqlite = new Database(":memory:");
-  const db = drizzle(sqlite, { schema: { companies, jobs, llmRuns, sourcePolls } });
+  const db = drizzle(sqlite, { schema: { companies, jobs, llmRuns, matches, profiles, sourcePolls, triage } });
   migrate(db, { migrationsFolder: resolve(process.cwd(), "drizzle") });
   return { db, sqlite };
 }

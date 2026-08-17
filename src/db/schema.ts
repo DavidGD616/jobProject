@@ -2,6 +2,8 @@ import { desc, sql } from "drizzle-orm";
 import {
   index,
   integer,
+  primaryKey,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -167,6 +169,112 @@ export const llmRuns = sqliteTable(
   ],
 );
 
+export type ResumeProfileJson = {
+  name?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  headline?: string;
+  summary?: string;
+  experience?: Array<{
+    company: string;
+    title: string;
+    startDate?: string;
+    endDate?: string;
+    bullets: string[];
+  }>;
+  education?: Array<{ school: string; degree?: string; field?: string }>;
+  projects?: Array<{ name: string; description: string; technologies?: string[] }>;
+};
+
+export type ProfilePreferences = {
+  remoteTypes?: Array<"remote" | "hybrid" | "onsite">;
+  locations?: string[];
+  minSalary?: number;
+  currencies?: string[];
+  seniorities?: string[];
+  visaKeywords?: string[];
+  exclusions?: string[];
+  targetCompanies?: string[];
+};
+
+/** Versioned, hand-editable search profile. The first row is the active profile. */
+export const profiles = sqliteTable(
+  "profiles",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    version: integer("version").notNull().default(1),
+    resumeJson: text("resume_json", { mode: "json" })
+      .$type<ResumeProfileJson>()
+      .notNull(),
+    skills: text("skills", { mode: "json" }).$type<string[]>().notNull(),
+    titleAliases: text("title_aliases", { mode: "json" }).$type<string[]>().notNull(),
+    skillAliases: text("skill_aliases", { mode: "json" })
+      .$type<Record<string, string[]>>()
+      .notNull(),
+    queryTerms: text("query_terms", { mode: "json" })
+      .$type<Record<string, number>>()
+      .notNull(),
+    preferences: text("preferences", { mode: "json" })
+      .$type<ProfilePreferences>()
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("profiles_updated_idx").on(table.updatedAt)],
+);
+
+/** Fast lexical and structured retrieval output, one current row per job/profile. */
+export const matches = sqliteTable(
+  "matches",
+  {
+    jobId: integer("job_id")
+      .notNull()
+      .references(() => jobs.id),
+    profileId: integer("profile_id")
+      .notNull()
+      .references(() => profiles.id),
+    profileVersion: integer("profile_version").notNull(),
+    lexicalScore: real("lexical_score").notNull(),
+    featureScore: real("feature_score").notNull(),
+    retrievalScore: real("retrieval_score").notNull(),
+    llmScore: integer("llm_score"),
+    reasoning: text("reasoning"),
+    gaps: text("gaps", { mode: "json" }).$type<string[]>().notNull(),
+    strengths: text("strengths", { mode: "json" }).$type<string[]>().notNull(),
+    flags: text("flags", { mode: "json" }).$type<string[]>().notNull(),
+    provider: text("provider"),
+    model: text("model"),
+    cliVersion: text("cli_version"),
+    scoredAt: integer("scored_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.jobId, table.profileId] }),
+    index("matches_profile_score_idx").on(table.profileId, table.retrievalScore),
+    index("matches_profile_llm_idx").on(table.profileId, table.llmScore),
+  ],
+);
+
+/** Append-only human labels used immediately for triage and later learning. */
+export const triage = sqliteTable(
+  "triage",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    jobId: integer("job_id")
+      .notNull()
+      .references(() => jobs.id),
+    profileId: integer("profile_id")
+      .notNull()
+      .references(() => profiles.id),
+    decision: text("decision").notNull(),
+    reason: text("reason"),
+    decidedAt: integer("decided_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("triage_job_profile_idx").on(table.jobId, table.profileId),
+    index("triage_decided_idx").on(table.decidedAt),
+  ],
+);
+
 export type Company = typeof companies.$inferSelect;
 export type NewCompany = typeof companies.$inferInsert;
 export type Job = typeof jobs.$inferSelect;
@@ -175,3 +283,9 @@ export type SourcePoll = typeof sourcePolls.$inferSelect;
 export type NewSourcePoll = typeof sourcePolls.$inferInsert;
 export type LlmRun = typeof llmRuns.$inferSelect;
 export type NewLlmRun = typeof llmRuns.$inferInsert;
+export type Profile = typeof profiles.$inferSelect;
+export type NewProfile = typeof profiles.$inferInsert;
+export type Match = typeof matches.$inferSelect;
+export type NewMatch = typeof matches.$inferInsert;
+export type Triage = typeof triage.$inferSelect;
+export type NewTriage = typeof triage.$inferInsert;
