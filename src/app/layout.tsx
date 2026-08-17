@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Job Hunt Agent",
-  description: "A local-only job discovery and application workspace.",
+  title: "Opportunity Ledger",
+  description: "A local-only job discovery workspace.",
 };
 
 export default function RootLayout({

@@ -1,6 +1,6 @@
 # 01 — Architecture
 
-**Status:** Draft · **Last updated:** 2026-08-13
+**Status:** Current · **Last updated:** 2026-08-17
 
 ## Shape
 
@@ -26,13 +26,12 @@ LLM work is done by shelling out to installed AI CLIs ([ADR-0007](adr/0007-llm-v
                              ▼
  ┌──────────────────────────────────────────────────────────────┐
  │  INGEST            adapter per source → RawPosting           │
- │                    normalize → canonical Job                 │
+ │                    normalize → canonical Job + heuristics    │
  │                    dedup (content hash + fuzzy title match)  │
  └───────────────────────────┬──────────────────────────────────┘
                              ▼
  ┌──────────────────────────────────────────────────────────────┐
- │  ENRICH            HEURISTIC only — regex + title parsing    │
- │                    strip boilerplate → description_fts        │
+ │  ENRICH            strip boilerplate → description_fts       │
  │                    no LLM here. 10k jobs × a CLI call = 27h  │
  └───────────────────────────┬──────────────────────────────────┘
                              ▼
@@ -77,8 +76,8 @@ Two loops are what make the system improve rather than just aggregate:
 |---|---|---|---|
 | `discovery/*` | candidate names, URLs | rows in `companies` | weekly |
 | `sources/*` | company row + cached validator | `SourceFetchResult<RawPosting>` | scheduled |
-| `ingest` | `RawPosting[]` | rows in `jobs` | scheduled |
-| `enrich` | `Job` | heuristic fields + `description_fts` | queued, per new job. **no LLM** |
+| `ingest` | `RawPosting[]` | normalized, heuristically enriched rows in `jobs` | scheduled |
+| `enrich` | `Job` | boilerplate-stripped `description_fts` | queued, per new job. **no LLM** |
 | `match` | `Job[]`, `Profile` | rows in `matches` | queued, after enrich |
 | `llm` | task + prompt | parsed result, cached | called by match / tailor / discovery |
 | `tailor` | `Job`, `Profile` | resume variant + cover letter draft | on demand |
@@ -97,11 +96,12 @@ title, normalized title, sanitized description, and source-supplied metadata.
 Ingest combines it with the known company and registered adapter to add
 `company_id`, `source`, `source_id`, observation timestamps, the content hash,
 and deduplication links. It computes `content_hash` from `title_norm`, the
-company slug, and the description with the shared helper. Enrich alone writes
-`description_fts` and `extraction_tier`; the staleness sweep alone writes
-`closed_at`.
+company slug, and the description with the shared helper. It applies
+deterministic salary, seniority, and remote heuristics only where the source
+left a field empty, and writes the resulting `extraction_tier`. Enrich alone
+writes `description_fts`; the staleness sweep alone writes `closed_at`.
 
-`normalize` being pure and I/O-free is the rule that keeps ingest testable against recorded fixtures.
+`normalize` being pure and I/O-free is the rule that keeps ingest testable against recorded fixtures. Source-supplied values remain authoritative. Boilerplate stripping and FTS work remain Phase 2.
 
 `SourceFetchResult` distinguishes `{ kind: "fetched", postings, etag }` from
 `{ kind: "not_modified", etag }`. The scheduled poller persists each ETag by
@@ -169,7 +169,7 @@ Settled in Phase 0. All ADRs accepted.
 | Validation | zod — doubles as the LLM parse ladder | |
 | Retrieval | FTS5 `bm25()` + structured features | [0008](adr/0008-no-embeddings-lexical-retrieval.md) |
 | Browser | Playwright, local only — never a cloud browser service | [0009](adr/0009-local-browser-automation.md) |
-| UI | Tailwind + shadcn/ui | |
+| UI | Tailwind | |
 
 ## Repo layout
 
@@ -191,8 +191,8 @@ src/
     career-page/         Playwright render + cached selectors (ADR-0009)
     _contract.ts         shared adapter types
   browser/               Playwright session mgmt, robots.txt checks
-  ingest/                normalize pipeline, dedup
-  enrich/                heuristic extraction, boilerplate stripping
+  ingest/                normalize pipeline, heuristic extraction, dedup
+  enrich/                boilerplate stripping, FTS preparation
   llm/                   provider abstraction
     providers/           claude.ts · codex.ts · opencode.ts
     parse.ts             parse ladder + repair retry

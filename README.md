@@ -1,7 +1,8 @@
 # Job Hunt Agent
 
-Local-only job discovery and application workspace. The project is currently
-in Phase 1: building the ingestion pipeline for official ATS boards.
+Local-only job discovery and application workspace. Phase 1's ingestion
+pipeline for official ATS boards is complete; the next work begins with the
+LLM harness and matching workflow.
 
 ## Run locally
 
@@ -36,3 +37,17 @@ pnpm db:migrate
 ```
 
 See [docs/README.md](docs/README.md) for the architecture and roadmap.
+
+## Phase 1 workflow
+
+After applying migrations, derive company boards and poll their job postings:
+
+```bash
+pnpm db:migrate
+pnpm discover:seed
+pnpm jobs:fetch
+```
+
+`pnpm jobs:fetch` only polls sources that are due, active, and not blocked. For
+a local long-running worker, use `pnpm jobs:watch`; it scans for due work every
+minute and remains bound to local SQLite state.

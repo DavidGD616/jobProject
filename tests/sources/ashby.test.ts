@@ -2,42 +2,34 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import {
-  allowAllRobotsPolicy,
-  createSourceRequestLimiter,
-  sourceRegistry,
-} from "@/sources";
+import { allowAllRobotsPolicy, createSourceRequestLimiter } from "@/sources";
 import type { SourceRequestLimiter } from "@/sources";
 import {
   adapter,
-  createGreenhouseFetcher,
-  GreenhouseFetchError,
-  greenhouseResponseSchema,
-  greenhouseSourceConfig,
+  ashbyResponseSchema,
+  ashbySourceConfig,
+  AshbyFetchError,
+  createAshbyFetcher,
   normalize,
   sourceId,
-} from "@/sources/greenhouse";
+} from "@/sources/ashby";
 import type {
-  GreenhouseFetchConfig,
-  GreenhouseFetchDependencies,
-} from "@/sources/greenhouse";
+  AshbyFetchConfig,
+  AshbyFetchDependencies,
+} from "@/sources/ashby";
 
-const fixture = greenhouseResponseSchema.parse(
-  JSON.parse(
-    readFileSync("tests/fixtures/greenhouse/jobs.json", "utf8"),
-  ),
+const fixture = ashbyResponseSchema.parse(
+  JSON.parse(readFileSync("tests/fixtures/ashby/jobs.json", "utf8")),
 );
 
-function config(
-  overrides: Partial<GreenhouseFetchConfig> = {},
-): GreenhouseFetchConfig {
+function config(overrides: Partial<AshbyFetchConfig> = {}): AshbyFetchConfig {
   return {
     company: {
       id: 1,
-      name: "Stripe",
-      atsType: "greenhouse",
-      atsToken: "stripe",
-      careersUrl: "https://stripe.com/jobs",
+      name: "PermitFlow",
+      atsType: "ashby",
+      atsToken: "permitflow",
+      careersUrl: "https://permitflow.com/careers",
     },
     userAgent: "job-hunt-agent-test/1.0 (+https://example.test/contact)",
     timeoutMs: 5_000,
@@ -52,10 +44,8 @@ function jsonResponse(payload: unknown, init?: ResponseInit): Response {
   });
 }
 
-function testFetcher(
-  overrides: GreenhouseFetchDependencies = {},
-) {
-  return createGreenhouseFetcher({
+function testFetcher(overrides: AshbyFetchDependencies = {}) {
+  return createAshbyFetcher({
     requestLimiter: createSourceRequestLimiter({
       maxConcurrentRequests: 2,
       minRequestIntervalMs: 0,
@@ -66,50 +56,107 @@ function testFetcher(
   });
 }
 
-test("fixture parses as a Greenhouse Job Board response", () => {
-  assert.equal(fixture.jobs.length, 3);
-  assert.equal(fixture.meta?.total, 564);
-  assert.equal(fixture.jobs[0]?.id, 8_077_887);
+test("fixture parses as an Ashby Job Board response", () => {
+  assert.equal(fixture.jobs.length, 2);
+  assert.equal(fixture.jobs[0]?.id, "9c3cac9e-2a67-4d7e-8098-42092a628390");
 });
 
-test("normalization maps Greenhouse fields and derives remote type", () => {
-  const posting = normalize(fixture.jobs[0]!);
-  const multiOfficePosting = normalize(fixture.jobs[2]!);
-  const remotePosting = normalize({
+test("normalization maps Ashby metadata, structured compensation, and remote type", () => {
+  const hybridPosting = normalize(fixture.jobs[0]!);
+  const remotePosting = normalize(fixture.jobs[1]!);
+
+  assert.equal(hybridPosting.url, fixture.jobs[0]!.jobUrl);
+  assert.equal(hybridPosting.title, "Staff Product Designer");
+  assert.equal(hybridPosting.titleNorm, "product designer");
+  assert.equal(hybridPosting.location, "New York City, NY");
+  assert.equal(hybridPosting.remoteType, "hybrid");
+  assert.equal(hybridPosting.salaryMin, 200_000);
+  assert.equal(hybridPosting.salaryMax, 275_000);
+  assert.equal(hybridPosting.salaryPeriod, "year");
+  assert.equal(hybridPosting.currency, "USD");
+  assert.equal(hybridPosting.postedAt?.toISOString(), "2026-07-28T05:03:53.353Z");
+  assert.match(hybridPosting.description, /PermitFlow is redefining how America builds/);
+  assert.match(hybridPosting.description, /What You’ll Do/);
+  assert.doesNotMatch(hybridPosting.description, /<[^>]+>/);
+
+  assert.equal(
+    remotePosting.location,
+    "Remote / Indonesia / Guyana / Canada / Philippines",
+  );
+  assert.equal(remotePosting.remoteType, "remote");
+  assert.equal(remotePosting.salaryMin, 5);
+  assert.equal(remotePosting.salaryMax, 7);
+  assert.equal(remotePosting.salaryPeriod, "hour");
+});
+
+test("normalization falls back to descriptionPlain and prioritizes workplaceType", () => {
+  const raw = {
     ...fixture.jobs[0]!,
-    location: {
-      // Recorded from a live Greenhouse/Stripe board location shape.
-      name: "US-Remote, US-San Francisco, US-Chicago, US-New York",
+    descriptionHtml: null,
+    descriptionPlain: "Plain Ashby description",
+    workplaceType: "On-site",
+    isRemote: true,
+  };
+
+  const posting = normalize(raw);
+
+  assert.equal(posting.description, "Plain Ashby description");
+  assert.equal(posting.remoteType, "onsite");
+});
+
+test("normalization falls back to published compensation tiers and rejects mixed ranges", () => {
+  const tierPosting = normalize({
+    ...fixture.jobs[0]!,
+    compensation: {
+      summaryComponents: [],
+      compensationTiers: [
+        {
+          components: [
+            {
+              compensationType: "Salary",
+              interval: "1 MONTH",
+              currencyCode: "USD",
+              minValue: 10_000,
+              maxValue: 12_000,
+            },
+          ],
+        },
+      ],
+    },
+  });
+  const ambiguousPosting = normalize({
+    ...fixture.jobs[0]!,
+    compensation: {
+      summaryComponents: [
+        {
+          compensationType: "Salary",
+          interval: "1 YEAR",
+          currencyCode: "USD",
+          minValue: 100_000,
+          maxValue: 120_000,
+        },
+        {
+          compensationType: "Salary",
+          interval: "1 YEAR",
+          currencyCode: "EUR",
+          minValue: 100_000,
+          maxValue: 120_000,
+        },
+      ],
     },
   });
 
-  assert.equal(posting.url, fixture.jobs[0]!.absolute_url);
-  assert.equal(posting.title, "Account Executive, Bridge");
-  assert.equal(posting.titleNorm, "account executive, bridge");
-  assert.equal(posting.location, "SF, NYC, SEA, CHI");
-  assert.equal(posting.remoteType, "unknown");
-  assert.equal(posting.postedAt?.toISOString(), "2026-07-22T17:15:53.000Z");
-  assert.match(posting.description, /Who we are/);
-  assert.match(posting.description, /Stripe is a financial infrastructure platform/);
-  assert.doesNotMatch(posting.description, /<[^>]+>/);
-  assert.doesNotMatch(posting.description, /&lt;|&gt;|&quot;/);
-
-  assert.equal(multiOfficePosting.title, "AI Product Manager, Professional Services");
-  assert.equal(multiOfficePosting.location, "New York/ San Francisco");
-  assert.equal(remotePosting.remoteType, "remote");
-  assert.equal(
-    normalize({ ...fixture.jobs[0]!, location: { name: "Hybrid — London" } })
-      .remoteType,
-    "hybrid",
-  );
-  assert.equal(
-    normalize({ ...fixture.jobs[0]!, location: { name: "On-site — Berlin" } })
-      .remoteType,
-    "onsite",
-  );
+  assert.equal(tierPosting.salaryMin, 10_000);
+  assert.equal(tierPosting.salaryMax, 12_000);
+  assert.equal(tierPosting.salaryPeriod, "month");
+  assert.equal(tierPosting.currency, "USD");
+  assert.equal(ambiguousPosting.salaryMin, null);
+  assert.equal(ambiguousPosting.salaryMax, null);
+  assert.equal(ambiguousPosting.salaryPeriod, null);
+  assert.equal(ambiguousPosting.currency, null);
 });
 
-test("normalization is deterministic and does not mutate raw Greenhouse data", () => {
+test("normalization is deterministic and does not mutate raw Ashby data", () => {
   const raw = fixture.jobs[0]!;
   const before = structuredClone(raw);
 
@@ -120,22 +167,28 @@ test("normalization is deterministic and does not mutate raw Greenhouse data", (
   assert.deepEqual(first, second);
 });
 
-test("sourceId uses the stable upstream Greenhouse job ID", () => {
+test("sourceId uses the stable upstream Ashby job ID", () => {
   const raw = fixture.jobs[0]!;
 
-  assert.equal(sourceId(raw), "8077887");
-  assert.equal(sourceId({ ...raw, content: "updated description" }), "8077887");
+  assert.equal(sourceId(raw), "9c3cac9e-2a67-4d7e-8098-42092a628390");
+  assert.equal(
+    sourceId({ ...raw, descriptionHtml: "updated description" }),
+    "9c3cac9e-2a67-4d7e-8098-42092a628390",
+  );
 });
 
-test("Greenhouse is registered as a polite Tier 1 source", () => {
-  assert.equal(sourceRegistry.greenhouse.adapter, adapter);
-  assert.equal(greenhouseSourceConfig.cadenceMs, 6 * 60 * 60 * 1_000);
-  assert.equal(greenhouseSourceConfig.maxConcurrentRequests, 2);
-  assert.equal(greenhouseSourceConfig.minRequestIntervalMs, 500);
-  assert.match(greenhouseSourceConfig.userAgent, /github\.com\/DavidGD616\/jobProject\/issues/);
+test("Ashby has a polite Tier 1 source policy and shared adapter", () => {
+  assert.equal(adapter.normalize, normalize);
+  assert.equal(ashbySourceConfig.cadenceMs, 6 * 60 * 60 * 1_000);
+  assert.equal(ashbySourceConfig.maxConcurrentRequests, 2);
+  assert.equal(ashbySourceConfig.minRequestIntervalMs, 500);
+  assert.match(
+    ashbySourceConfig.userAgent,
+    /github\.com\/DavidGD616\/jobProject\/issues/,
+  );
 });
 
-test("fetch requests the public board endpoint and captures its ETag", async () => {
+test("fetch requests the public Ashby board with compensation and captures its ETag", async () => {
   let requestedUrl: string | undefined;
   let requestedHeaders: Headers | undefined;
   const fetcher = testFetcher({
@@ -150,11 +203,11 @@ test("fetch requests the public board endpoint and captures its ETag", async () 
 
   assert.equal(result.kind, "fetched");
   if (result.kind !== "fetched") assert.fail("expected a fetched result");
-  assert.equal(result.postings.length, 3);
+  assert.equal(result.postings.length, 2);
   assert.equal(result.etag, 'W/"board-v1"');
   assert.equal(
     requestedUrl,
-    "https://boards-api.greenhouse.io/v1/boards/stripe/jobs?content=true",
+    "https://api.ashbyhq.com/posting-api/job-board/permitflow?includeCompensation=true",
   );
   assert.equal(requestedHeaders?.get("accept"), "application/json");
   assert.equal(
@@ -164,9 +217,9 @@ test("fetch requests the public board endpoint and captures its ETag", async () 
   assert.equal(requestedHeaders?.get("if-none-match"), null);
 });
 
-test("fetch checks robots.txt before requesting a Greenhouse board", async () => {
+test("fetch checks robots.txt before requesting an Ashby board", async () => {
   const requestedUrls: string[] = [];
-  const fetcher = createGreenhouseFetcher({
+  const fetcher = createAshbyFetcher({
     requestLimiter: createSourceRequestLimiter({
       maxConcurrentRequests: 1,
       minRequestIntervalMs: 0,
@@ -175,9 +228,10 @@ test("fetch checks robots.txt before requesting a Greenhouse board", async () =>
       const url = String(input);
       requestedUrls.push(url);
       if (url.endsWith("/robots.txt")) {
-        return new Response("User-agent: *\nDisallow: /v1/boards/stripe/jobs\n", {
-          headers: { "content-type": "text/plain" },
-        });
+        return new Response(
+          "User-agent: *\nDisallow: /posting-api/job-board/permitflow\n",
+          { headers: { "content-type": "text/plain" } },
+        );
       }
       throw new Error("board API must not be reached when robots disallows it");
     },
@@ -186,10 +240,9 @@ test("fetch checks robots.txt before requesting a Greenhouse board", async () =>
   await assert.rejects(
     () => fetcher(config()),
     (error: unknown) =>
-      error instanceof GreenhouseFetchError &&
-      /robots\.txt disallows/.test(error.message),
+      error instanceof AshbyFetchError && /robots\.txt disallows/.test(error.message),
   );
-  assert.deepEqual(requestedUrls, ["https://boards-api.greenhouse.io/robots.txt"]);
+  assert.deepEqual(requestedUrls, ["https://api.ashbyhq.com/robots.txt"]);
 });
 
 test("fetch treats a conditional 304 as unchanged rather than an empty board", async () => {
@@ -212,7 +265,7 @@ test("fetch treats a conditional 304 as unchanged rather than an empty board", a
 
 test("fetch keeps a successful empty board distinct from a conditional 304", async () => {
   const fetcher = testFetcher({
-    fetchImpl: async () => jsonResponse({ jobs: [], meta: { total: 0 } }),
+    fetchImpl: async () => jsonResponse({ jobs: [] }),
   });
 
   const result = await fetcher(config());
@@ -220,7 +273,7 @@ test("fetch keeps a successful empty board distinct from a conditional 304", asy
   assert.deepEqual(result, { kind: "fetched", postings: [], etag: null });
 });
 
-test("fetch retries rate limits, preserves its validator, and honors long Retry-After", async () => {
+test("fetch retries rate limits, preserves its validator, and honors Retry-After", async () => {
   let attempts = 0;
   let secondRequestHeaders: Headers | undefined;
   const delays: number[] = [];
@@ -285,7 +338,7 @@ test("fetch preserves the cooldown from a final 429 for later boards", async () 
   await assert.rejects(
     fetcher(config({ maxAttempts: 1 })),
     (error: unknown) => {
-      assert.ok(error instanceof GreenhouseFetchError);
+      assert.ok(error instanceof AshbyFetchError);
       assert.equal(error.status, 429);
       assert.equal(error.retryDelayMs, 60_000);
       return true;
@@ -346,7 +399,7 @@ test("fetch retries transient network and server failures, but not client failur
   await assert.rejects(
     clientFetcher(config({ maxAttempts: 3 })),
     (error: unknown) => {
-      assert.ok(error instanceof GreenhouseFetchError);
+      assert.ok(error instanceof AshbyFetchError);
       assert.equal(error.status, 404);
       return true;
     },
@@ -369,7 +422,7 @@ test("fetch turns a request timeout into a source error", async () => {
   await assert.rejects(
     fetcher(config({ maxAttempts: 1, timeoutMs: 0 })),
     (error: unknown) => {
-      assert.ok(error instanceof GreenhouseFetchError);
+      assert.ok(error instanceof AshbyFetchError);
       assert.match(error.message, /request failed/);
       return true;
     },
@@ -389,7 +442,7 @@ test("fetch validates timeout values before starting a request", async () => {
     await assert.rejects(
       fetcher(config({ timeoutMs })),
       (error: unknown) => {
-        assert.ok(error instanceof GreenhouseFetchError);
+        assert.ok(error instanceof AshbyFetchError);
         assert.match(error.message, /timeoutMs/);
         return true;
       },
@@ -398,12 +451,12 @@ test("fetch validates timeout values before starting a request", async () => {
   assert.equal(attempts, 0);
 });
 
-test("fetch caps concurrent Greenhouse board requests at the registered policy", async () => {
+test("fetch caps concurrent Ashby board requests at the registered policy", async () => {
   let active = 0;
   let maximumActive = 0;
-  const fetcher = createGreenhouseFetcher({
+  const fetcher = createAshbyFetcher({
     requestLimiter: createSourceRequestLimiter({
-      maxConcurrentRequests: greenhouseSourceConfig.maxConcurrentRequests,
+      maxConcurrentRequests: ashbySourceConfig.maxConcurrentRequests,
       minRequestIntervalMs: 0,
     }),
     robotsPolicy: allowAllRobotsPolicy,
@@ -417,33 +470,24 @@ test("fetch caps concurrent Greenhouse board requests at the registered policy",
     },
   });
 
-  const requests = ["stripe-a", "stripe-b", "stripe-c", "stripe-d"].map(
-    (atsToken) =>
-      fetcher(
-        config({
-          company: {
-            ...config().company,
-            atsToken,
-          },
-        }),
-      ),
+  const requests = [
+    "permitflow-a",
+    "permitflow-b",
+    "permitflow-c",
+    "permitflow-d",
+  ].map((atsToken) =>
+    fetcher(
+      config({
+        company: {
+          ...config().company,
+          atsToken,
+        },
+      }),
+    ),
   );
 
   await Promise.all(requests);
-  assert.equal(maximumActive, greenhouseSourceConfig.maxConcurrentRequests);
-});
-
-test("source rate limiter defers new requests after a source-wide 429 cooldown", async () => {
-  const limiter = createSourceRequestLimiter({
-    maxConcurrentRequests: 2,
-    minRequestIntervalMs: 0,
-  });
-  limiter.deferFor(20);
-
-  const startedAt = Date.now();
-  await limiter.waitForRequestSlot();
-
-  assert.ok(Date.now() - startedAt >= 15);
+  assert.equal(maximumActive, ashbySourceConfig.maxConcurrentRequests);
 });
 
 test("fetch rejects a malformed successful payload without retrying", async () => {
@@ -451,14 +495,14 @@ test("fetch rejects a malformed successful payload without retrying", async () =
   const fetcher = testFetcher({
     fetchImpl: async () => {
       attempts += 1;
-      return jsonResponse({ jobs: [{ id: "not-a-number" }] });
+      return jsonResponse({ jobs: [{ id: "missing-required-fields" }] });
     },
   });
 
   await assert.rejects(
     fetcher(config({ maxAttempts: 3, retryBaseDelayMs: 0 })),
     (error: unknown) => {
-      assert.ok(error instanceof GreenhouseFetchError);
+      assert.ok(error instanceof AshbyFetchError);
       assert.match(error.message, /unexpected payload/);
       return true;
     },

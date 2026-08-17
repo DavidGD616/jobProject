@@ -10,7 +10,7 @@ export interface SourceRequestLimiter {
   /** Space the start of each HTTP request, including retry attempts. */
   waitForRequestSlot(signal?: AbortSignal): Promise<void>;
 
-  /** Defer every future source request after an upstream rate-limit response. */
+  /** Defer every future source request after a retryable upstream response. */
   deferFor(ms: number): void;
 
   /**

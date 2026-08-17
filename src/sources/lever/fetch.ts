@@ -7,29 +7,28 @@ import type { SourceRequestLimiter } from "../rate-limit";
 import { fetchRobotsPolicy } from "../robots";
 import type { RobotsPolicy } from "../robots";
 
-import { greenhouseSourceConfig } from "./config";
-import { greenhouseResponseSchema } from "./schema";
-import type { GreenhouseJob } from "./schema";
+import { leverSourceConfig } from "./config";
+import { leverResponseSchema } from "./schema";
+import type { LeverJob } from "./schema";
 
-const GREENHOUSE_JOBS_URL =
-  "https://boards-api.greenhouse.io/v1/boards" as const;
+const LEVER_POSTINGS_URL = "https://api.lever.co/v0/postings" as const;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_RETRY_BASE_DELAY_MS = 250;
 const MAX_EXPONENTIAL_BACKOFF_MS = 8_000;
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
-const greenhouseRequestLimiter = createSourceRequestLimiter({
-  maxConcurrentRequests: greenhouseSourceConfig.maxConcurrentRequests,
-  minRequestIntervalMs: greenhouseSourceConfig.minRequestIntervalMs,
+const leverRequestLimiter = createSourceRequestLimiter({
+  maxConcurrentRequests: leverSourceConfig.maxConcurrentRequests,
+  minRequestIntervalMs: leverSourceConfig.minRequestIntervalMs,
 });
 
-export interface GreenhouseFetchConfig extends SourceFetchConfig {
+export interface LeverFetchConfig extends SourceFetchConfig {
   /** Injectable controls for deterministic retry tests. */
   maxAttempts?: number;
   retryBaseDelayMs?: number;
 }
 
-export interface GreenhouseFetchDependencies {
+export interface LeverFetchDependencies {
   fetchImpl?: typeof globalThis.fetch;
   sleep?: typeof delay;
   requestLimiter?: SourceRequestLimiter;
@@ -37,7 +36,7 @@ export interface GreenhouseFetchDependencies {
   robotsPolicy?: RobotsPolicy;
 }
 
-export class GreenhouseFetchError extends Error {
+export class LeverFetchError extends Error {
   readonly status: number | undefined;
   /** Delay supplied by the upstream response or calculated for this failure. */
   readonly retryDelayMs: number | undefined;
@@ -53,7 +52,7 @@ export class GreenhouseFetchError extends Error {
     },
   ) {
     super(message, { cause: options.cause });
-    this.name = "GreenhouseFetchError";
+    this.name = "LeverFetchError";
     this.status = options.status;
     this.retryDelayMs = options.retryDelayMs;
     this.url = options.url;
@@ -89,19 +88,19 @@ function backoffMs(baseDelayMs: number, attempt: number): number {
   );
 }
 
-function requestSignal(config: GreenhouseFetchConfig): AbortSignal {
+function requestSignal(config: LeverFetchConfig): AbortSignal {
   return config.signal
     ? AbortSignal.any([config.signal, AbortSignal.timeout(config.timeoutMs)])
     : AbortSignal.timeout(config.timeoutMs);
 }
 
 function boardUrl(token: string): string {
-  const url = new URL(`${GREENHOUSE_JOBS_URL}/${encodeURIComponent(token)}/jobs`);
-  url.searchParams.set("content", "true");
+  const url = new URL(`${LEVER_POSTINGS_URL}/${encodeURIComponent(token)}`);
+  url.searchParams.set("mode", "json");
   return url.toString();
 }
 
-function requestHeaders(config: GreenhouseFetchConfig): HeadersInit {
+function requestHeaders(config: LeverFetchConfig): HeadersInit {
   const headers: HeadersInit = {
     Accept: "application/json",
     "User-Agent": config.userAgent,
@@ -124,32 +123,31 @@ function normalizedBaseDelay(value: number | undefined): number {
   return Math.max(0, value);
 }
 
-function assertValidTimeout(config: GreenhouseFetchConfig, url: string): void {
+function assertValidTimeout(config: LeverFetchConfig, url: string): void {
   if (
     !Number.isInteger(config.timeoutMs) ||
     config.timeoutMs < 0 ||
     config.timeoutMs > MAX_TIMEOUT_MS
   ) {
-    throw new GreenhouseFetchError(
-      "Greenhouse source requires a non-negative timeoutMs within Node's timer range",
+    throw new LeverFetchError(
+      "Lever source requires a non-negative timeoutMs within Node's timer range",
       { url },
     );
   }
 }
 
 async function fetchBoard(
-  config: GreenhouseFetchConfig,
+  config: LeverFetchConfig,
   dependencies: Pick<
-    Required<GreenhouseFetchDependencies>,
+    Required<LeverFetchDependencies>,
     "fetchImpl" | "sleep" | "requestLimiter"
   >,
-): Promise<SourceFetchResult<GreenhouseJob>> {
+): Promise<SourceFetchResult<LeverJob>> {
   const token = config.company.atsToken?.trim();
   if (!token) {
-    throw new GreenhouseFetchError(
-      "Greenhouse source requires company.atsToken",
-      { url: GREENHOUSE_JOBS_URL },
-    );
+    throw new LeverFetchError("Lever source requires company.atsToken", {
+      url: LEVER_POSTINGS_URL,
+    });
   }
 
   const url = boardUrl(token);
@@ -168,10 +166,7 @@ async function fetchBoard(
       });
     } catch (cause) {
       if (config.signal?.aborted || attempt === maxAttempts) {
-        throw new GreenhouseFetchError("Greenhouse request failed", {
-          url,
-          cause,
-        });
+        throw new LeverFetchError("Lever request failed", { url, cause });
       }
 
       await dependencies.sleep(backoffMs(baseDelayMs, attempt), config.signal);
@@ -187,10 +182,10 @@ async function fetchBoard(
 
     if (!response.ok) {
       if (!retryableStatus(response.status)) {
-        throw new GreenhouseFetchError(
-          `Greenhouse returned HTTP ${response.status}`,
-          { url, status: response.status },
-        );
+        throw new LeverFetchError(`Lever returned HTTP ${response.status}`, {
+          url,
+          status: response.status,
+        });
       }
 
       const retryDelayMs =
@@ -198,10 +193,11 @@ async function fetchBoard(
         backoffMs(baseDelayMs, attempt);
       dependencies.requestLimiter.deferFor(retryDelayMs);
       if (attempt === maxAttempts) {
-        throw new GreenhouseFetchError(
-          `Greenhouse returned HTTP ${response.status}`,
-          { url, status: response.status, retryDelayMs },
-        );
+        throw new LeverFetchError(`Lever returned HTTP ${response.status}`, {
+          url,
+          status: response.status,
+          retryDelayMs,
+        });
       }
       await dependencies.sleep(retryDelayMs, config.signal);
       continue;
@@ -211,51 +207,46 @@ async function fetchBoard(
     try {
       payload = await response.json();
     } catch (cause) {
-      throw new GreenhouseFetchError("Greenhouse returned invalid JSON", {
-        url,
-        cause,
-      });
+      throw new LeverFetchError("Lever returned invalid JSON", { url, cause });
     }
 
-    const parsed = greenhouseResponseSchema.safeParse(payload);
+    const parsed = leverResponseSchema.safeParse(payload);
     if (!parsed.success) {
-      throw new GreenhouseFetchError(
-        `Greenhouse returned an unexpected payload: ${parsed.error.message}`,
+      throw new LeverFetchError(
+        `Lever returned an unexpected payload: ${parsed.error.message}`,
         { url, cause: parsed.error },
       );
     }
 
     return {
       kind: "fetched",
-      postings: parsed.data.jobs,
+      postings: parsed.data,
       etag: response.headers.get("etag"),
     };
   }
 
-  throw new GreenhouseFetchError("Greenhouse request exhausted retries", {
-    url,
-  });
+  throw new LeverFetchError("Lever request exhausted retries", { url });
 }
 
 /**
  * Create an isolated fetcher for tests. The exported production fetcher uses
- * the shared source policy so all Greenhouse boards share one polite limiter.
+ * the shared source policy so all Lever boards share one polite limiter.
  */
-export function createGreenhouseFetcher(
-  overrides: GreenhouseFetchDependencies = {},
+export function createLeverFetcher(
+  overrides: LeverFetchDependencies = {},
 ): (
-  config: GreenhouseFetchConfig,
-) => Promise<SourceFetchResult<GreenhouseJob>> {
+  config: LeverFetchConfig,
+) => Promise<SourceFetchResult<LeverJob>> {
   const dependencies = {
     fetchImpl: overrides.fetchImpl ?? globalThis.fetch,
     sleep: overrides.sleep ?? delay,
-    requestLimiter: overrides.requestLimiter ?? greenhouseRequestLimiter,
+    requestLimiter: overrides.requestLimiter ?? leverRequestLimiter,
   };
   const injectedRobotsPolicy = overrides.robotsPolicy;
   const robotsPolicies = new Map<string, Promise<RobotsPolicy>>();
 
   async function ensureRobotsPolicy(
-    config: GreenhouseFetchConfig,
+    config: LeverFetchConfig,
     url: string,
   ): Promise<void> {
     let robotsPolicy = injectedRobotsPolicy;
@@ -286,7 +277,7 @@ export function createGreenhouseFetcher(
       robotsPolicy = await policy;
     }
     if (!robotsPolicy.allows(url)) {
-      throw new GreenhouseFetchError("robots.txt disallows this Greenhouse API path", {
+      throw new LeverFetchError("robots.txt disallows this Lever API path", {
         url,
       });
     }
@@ -302,8 +293,8 @@ export function createGreenhouseFetcher(
       try {
         await ensureRobotsPolicy(config, url);
       } catch (cause) {
-        if (cause instanceof GreenhouseFetchError) throw cause;
-        throw new GreenhouseFetchError("Greenhouse robots.txt policy could not be checked", {
+        if (cause instanceof LeverFetchError) throw cause;
+        throw new LeverFetchError("Lever robots.txt policy could not be checked", {
           url,
           cause,
         });
@@ -316,5 +307,5 @@ export function createGreenhouseFetcher(
   };
 }
 
-/** Fetch all currently published jobs from one public Greenhouse board. */
-export const fetch = createGreenhouseFetcher();
+/** Fetch all currently published jobs from one public Lever board. */
+export const fetch = createLeverFetcher();

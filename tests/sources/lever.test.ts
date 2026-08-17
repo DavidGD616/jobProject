@@ -5,39 +5,34 @@ import test from "node:test";
 import {
   allowAllRobotsPolicy,
   createSourceRequestLimiter,
-  sourceRegistry,
 } from "@/sources";
 import type { SourceRequestLimiter } from "@/sources";
 import {
   adapter,
-  createGreenhouseFetcher,
-  GreenhouseFetchError,
-  greenhouseResponseSchema,
-  greenhouseSourceConfig,
+  createLeverFetcher,
+  LeverFetchError,
+  leverResponseSchema,
+  leverSourceConfig,
   normalize,
   sourceId,
-} from "@/sources/greenhouse";
+} from "@/sources/lever";
 import type {
-  GreenhouseFetchConfig,
-  GreenhouseFetchDependencies,
-} from "@/sources/greenhouse";
+  LeverFetchConfig,
+  LeverFetchDependencies,
+} from "@/sources/lever";
 
-const fixture = greenhouseResponseSchema.parse(
-  JSON.parse(
-    readFileSync("tests/fixtures/greenhouse/jobs.json", "utf8"),
-  ),
+const fixture = leverResponseSchema.parse(
+  JSON.parse(readFileSync("tests/fixtures/lever/jobs.json", "utf8")),
 );
 
-function config(
-  overrides: Partial<GreenhouseFetchConfig> = {},
-): GreenhouseFetchConfig {
+function config(overrides: Partial<LeverFetchConfig> = {}): LeverFetchConfig {
   return {
     company: {
       id: 1,
-      name: "Stripe",
-      atsType: "greenhouse",
-      atsToken: "stripe",
-      careersUrl: "https://stripe.com/jobs",
+      name: "Atom Computing",
+      atsType: "lever",
+      atsToken: "atomcomputing",
+      careersUrl: "https://jobs.lever.co/atomcomputing",
     },
     userAgent: "job-hunt-agent-test/1.0 (+https://example.test/contact)",
     timeoutMs: 5_000,
@@ -52,10 +47,8 @@ function jsonResponse(payload: unknown, init?: ResponseInit): Response {
   });
 }
 
-function testFetcher(
-  overrides: GreenhouseFetchDependencies = {},
-) {
-  return createGreenhouseFetcher({
+function testFetcher(overrides: LeverFetchDependencies = {}) {
+  return createLeverFetcher({
     requestLimiter: createSourceRequestLimiter({
       maxConcurrentRequests: 2,
       minRequestIntervalMs: 0,
@@ -66,51 +59,76 @@ function testFetcher(
   });
 }
 
-test("fixture parses as a Greenhouse Job Board response", () => {
-  assert.equal(fixture.jobs.length, 3);
-  assert.equal(fixture.meta?.total, 564);
-  assert.equal(fixture.jobs[0]?.id, 8_077_887);
+test("fixture parses as a Lever postings response", () => {
+  assert.equal(fixture.length, 3);
+  assert.equal(fixture[0]?.id, "929030c6-3ecc-46ce-96a1-81ac1eed244b");
 });
 
-test("normalization maps Greenhouse fields and derives remote type", () => {
-  const posting = normalize(fixture.jobs[0]!);
-  const multiOfficePosting = normalize(fixture.jobs[2]!);
+test("normalization maps Lever fields, structured salary, and remote metadata", () => {
+  const onsitePosting = normalize(fixture[0]!);
+  const missingSalaryPosting = normalize(fixture[1]!);
+  const multiLocationPosting = normalize(fixture[2]!);
   const remotePosting = normalize({
-    ...fixture.jobs[0]!,
-    location: {
-      // Recorded from a live Greenhouse/Stripe board location shape.
-      name: "US-Remote, US-San Francisco, US-Chicago, US-New York",
+    ...fixture[0]!,
+    workplaceType: "remote",
+  });
+  const locationDerivedRemotePosting = normalize({
+    ...fixture[0]!,
+    workplaceType: null,
+    categories: {
+      ...fixture[0]!.categories,
+      location: null,
+      allLocations: ["Remote (US)"],
     },
   });
+  const bodyFallbackPosting = normalize({
+    ...fixture[0]!,
+    description: "",
+    descriptionBody: "<p>Fallback description body.</p>",
+    descriptionPlain: null,
+    lists: [],
+    opening: "",
+    additional: "",
+  });
 
-  assert.equal(posting.url, fixture.jobs[0]!.absolute_url);
-  assert.equal(posting.title, "Account Executive, Bridge");
-  assert.equal(posting.titleNorm, "account executive, bridge");
-  assert.equal(posting.location, "SF, NYC, SEA, CHI");
-  assert.equal(posting.remoteType, "unknown");
-  assert.equal(posting.postedAt?.toISOString(), "2026-07-22T17:15:53.000Z");
-  assert.match(posting.description, /Who we are/);
-  assert.match(posting.description, /Stripe is a financial infrastructure platform/);
-  assert.doesNotMatch(posting.description, /<[^>]+>/);
-  assert.doesNotMatch(posting.description, /&lt;|&gt;|&quot;/);
+  assert.equal(onsitePosting.url, fixture[0]!.hostedUrl);
+  assert.equal(onsitePosting.title, "Facilities Technician");
+  assert.equal(onsitePosting.titleNorm, "facilities technician");
+  assert.equal(onsitePosting.location, "Boulder, CO");
+  assert.equal(onsitePosting.remoteType, "onsite");
+  assert.equal(onsitePosting.postedAt?.toISOString(), "2026-07-29T21:00:11.414Z");
+  assert.equal(onsitePosting.salaryMin, 75_000);
+  assert.equal(onsitePosting.salaryMax, 100_000);
+  assert.equal(onsitePosting.salaryPeriod, "year");
+  assert.equal(onsitePosting.currency, "USD");
+  assert.match(onsitePosting.description, /Facilities Responsibilities/);
+  assert.match(onsitePosting.description, /routine and preventive maintenance/);
+  assert.match(onsitePosting.description, /base salary range/);
+  assert.doesNotMatch(onsitePosting.description, /<[^>]+>/);
+  assert.doesNotMatch(onsitePosting.description, /&nbsp;|&lt;|&gt;|&quot;/);
 
-  assert.equal(multiOfficePosting.title, "AI Product Manager, Professional Services");
-  assert.equal(multiOfficePosting.location, "New York/ San Francisco");
+  // Salary is present only in free text for this posting. Leave it for the
+  // later heuristic stage rather than treating it as source-supplied data.
+  assert.equal(missingSalaryPosting.salaryMin, undefined);
+  assert.equal(missingSalaryPosting.salaryMax, undefined);
+  assert.equal(missingSalaryPosting.salaryPeriod, undefined);
+  assert.equal(missingSalaryPosting.currency, undefined);
+
+  assert.equal(multiLocationPosting.titleNorm, "software engineer - control systems");
+  assert.equal(multiLocationPosting.location, "Boulder, CO / Austin, TX");
+  assert.equal(multiLocationPosting.remoteType, "hybrid");
+  assert.equal(
+    multiLocationPosting.postedAt?.toISOString(),
+    "2026-07-24T20:39:51.915Z",
+  );
   assert.equal(remotePosting.remoteType, "remote");
-  assert.equal(
-    normalize({ ...fixture.jobs[0]!, location: { name: "Hybrid — London" } })
-      .remoteType,
-    "hybrid",
-  );
-  assert.equal(
-    normalize({ ...fixture.jobs[0]!, location: { name: "On-site — Berlin" } })
-      .remoteType,
-    "onsite",
-  );
+  assert.equal(locationDerivedRemotePosting.location, "Remote (US)");
+  assert.equal(locationDerivedRemotePosting.remoteType, "remote");
+  assert.equal(bodyFallbackPosting.description, "Fallback description body.");
 });
 
-test("normalization is deterministic and does not mutate raw Greenhouse data", () => {
-  const raw = fixture.jobs[0]!;
+test("normalization is deterministic and does not mutate raw Lever data", () => {
+  const raw = fixture[0]!;
   const before = structuredClone(raw);
 
   const first = normalize(raw);
@@ -120,19 +138,25 @@ test("normalization is deterministic and does not mutate raw Greenhouse data", (
   assert.deepEqual(first, second);
 });
 
-test("sourceId uses the stable upstream Greenhouse job ID", () => {
-  const raw = fixture.jobs[0]!;
+test("sourceId uses the stable upstream Lever job ID", () => {
+  const raw = fixture[0]!;
 
-  assert.equal(sourceId(raw), "8077887");
-  assert.equal(sourceId({ ...raw, content: "updated description" }), "8077887");
+  assert.equal(sourceId(raw), "929030c6-3ecc-46ce-96a1-81ac1eed244b");
+  assert.equal(
+    sourceId({ ...raw, description: "<p>Updated description</p>" }),
+    "929030c6-3ecc-46ce-96a1-81ac1eed244b",
+  );
 });
 
-test("Greenhouse is registered as a polite Tier 1 source", () => {
-  assert.equal(sourceRegistry.greenhouse.adapter, adapter);
-  assert.equal(greenhouseSourceConfig.cadenceMs, 6 * 60 * 60 * 1_000);
-  assert.equal(greenhouseSourceConfig.maxConcurrentRequests, 2);
-  assert.equal(greenhouseSourceConfig.minRequestIntervalMs, 500);
-  assert.match(greenhouseSourceConfig.userAgent, /github\.com\/DavidGD616\/jobProject\/issues/);
+test("Lever has a polite Tier 1 source policy", () => {
+  assert.equal(adapter.normalize, normalize);
+  assert.equal(leverSourceConfig.cadenceMs, 6 * 60 * 60 * 1_000);
+  assert.equal(leverSourceConfig.maxConcurrentRequests, 2);
+  assert.equal(leverSourceConfig.minRequestIntervalMs, 1_000);
+  assert.match(
+    leverSourceConfig.userAgent,
+    /github\.com\/DavidGD616\/jobProject\/issues/,
+  );
 });
 
 test("fetch requests the public board endpoint and captures its ETag", async () => {
@@ -154,7 +178,7 @@ test("fetch requests the public board endpoint and captures its ETag", async () 
   assert.equal(result.etag, 'W/"board-v1"');
   assert.equal(
     requestedUrl,
-    "https://boards-api.greenhouse.io/v1/boards/stripe/jobs?content=true",
+    "https://api.lever.co/v0/postings/atomcomputing?mode=json",
   );
   assert.equal(requestedHeaders?.get("accept"), "application/json");
   assert.equal(
@@ -164,9 +188,9 @@ test("fetch requests the public board endpoint and captures its ETag", async () 
   assert.equal(requestedHeaders?.get("if-none-match"), null);
 });
 
-test("fetch checks robots.txt before requesting a Greenhouse board", async () => {
+test("fetch checks robots.txt before requesting a Lever board", async () => {
   const requestedUrls: string[] = [];
-  const fetcher = createGreenhouseFetcher({
+  const fetcher = createLeverFetcher({
     requestLimiter: createSourceRequestLimiter({
       maxConcurrentRequests: 1,
       minRequestIntervalMs: 0,
@@ -175,9 +199,10 @@ test("fetch checks robots.txt before requesting a Greenhouse board", async () =>
       const url = String(input);
       requestedUrls.push(url);
       if (url.endsWith("/robots.txt")) {
-        return new Response("User-agent: *\nDisallow: /v1/boards/stripe/jobs\n", {
-          headers: { "content-type": "text/plain" },
-        });
+        return new Response(
+          "User-agent: *\nDisallow: /v0/postings/atomcomputing\n",
+          { headers: { "content-type": "text/plain" } },
+        );
       }
       throw new Error("board API must not be reached when robots disallows it");
     },
@@ -186,10 +211,9 @@ test("fetch checks robots.txt before requesting a Greenhouse board", async () =>
   await assert.rejects(
     () => fetcher(config()),
     (error: unknown) =>
-      error instanceof GreenhouseFetchError &&
-      /robots\.txt disallows/.test(error.message),
+      error instanceof LeverFetchError && /robots\.txt disallows/.test(error.message),
   );
-  assert.deepEqual(requestedUrls, ["https://boards-api.greenhouse.io/robots.txt"]);
+  assert.deepEqual(requestedUrls, ["https://api.lever.co/robots.txt"]);
 });
 
 test("fetch treats a conditional 304 as unchanged rather than an empty board", async () => {
@@ -212,7 +236,7 @@ test("fetch treats a conditional 304 as unchanged rather than an empty board", a
 
 test("fetch keeps a successful empty board distinct from a conditional 304", async () => {
   const fetcher = testFetcher({
-    fetchImpl: async () => jsonResponse({ jobs: [], meta: { total: 0 } }),
+    fetchImpl: async () => jsonResponse([]),
   });
 
   const result = await fetcher(config());
@@ -285,7 +309,7 @@ test("fetch preserves the cooldown from a final 429 for later boards", async () 
   await assert.rejects(
     fetcher(config({ maxAttempts: 1 })),
     (error: unknown) => {
-      assert.ok(error instanceof GreenhouseFetchError);
+      assert.ok(error instanceof LeverFetchError);
       assert.equal(error.status, 429);
       assert.equal(error.retryDelayMs, 60_000);
       return true;
@@ -346,7 +370,7 @@ test("fetch retries transient network and server failures, but not client failur
   await assert.rejects(
     clientFetcher(config({ maxAttempts: 3 })),
     (error: unknown) => {
-      assert.ok(error instanceof GreenhouseFetchError);
+      assert.ok(error instanceof LeverFetchError);
       assert.equal(error.status, 404);
       return true;
     },
@@ -369,7 +393,7 @@ test("fetch turns a request timeout into a source error", async () => {
   await assert.rejects(
     fetcher(config({ maxAttempts: 1, timeoutMs: 0 })),
     (error: unknown) => {
-      assert.ok(error instanceof GreenhouseFetchError);
+      assert.ok(error instanceof LeverFetchError);
       assert.match(error.message, /request failed/);
       return true;
     },
@@ -389,7 +413,7 @@ test("fetch validates timeout values before starting a request", async () => {
     await assert.rejects(
       fetcher(config({ timeoutMs })),
       (error: unknown) => {
-        assert.ok(error instanceof GreenhouseFetchError);
+        assert.ok(error instanceof LeverFetchError);
         assert.match(error.message, /timeoutMs/);
         return true;
       },
@@ -398,12 +422,12 @@ test("fetch validates timeout values before starting a request", async () => {
   assert.equal(attempts, 0);
 });
 
-test("fetch caps concurrent Greenhouse board requests at the registered policy", async () => {
+test("fetch caps concurrent Lever board requests at the registered policy", async () => {
   let active = 0;
   let maximumActive = 0;
-  const fetcher = createGreenhouseFetcher({
+  const fetcher = createLeverFetcher({
     requestLimiter: createSourceRequestLimiter({
-      maxConcurrentRequests: greenhouseSourceConfig.maxConcurrentRequests,
+      maxConcurrentRequests: leverSourceConfig.maxConcurrentRequests,
       minRequestIntervalMs: 0,
     }),
     robotsPolicy: allowAllRobotsPolicy,
@@ -417,7 +441,7 @@ test("fetch caps concurrent Greenhouse board requests at the registered policy",
     },
   });
 
-  const requests = ["stripe-a", "stripe-b", "stripe-c", "stripe-d"].map(
+  const requests = ["atom-a", "atom-b", "atom-c", "atom-d"].map(
     (atsToken) =>
       fetcher(
         config({
@@ -430,20 +454,7 @@ test("fetch caps concurrent Greenhouse board requests at the registered policy",
   );
 
   await Promise.all(requests);
-  assert.equal(maximumActive, greenhouseSourceConfig.maxConcurrentRequests);
-});
-
-test("source rate limiter defers new requests after a source-wide 429 cooldown", async () => {
-  const limiter = createSourceRequestLimiter({
-    maxConcurrentRequests: 2,
-    minRequestIntervalMs: 0,
-  });
-  limiter.deferFor(20);
-
-  const startedAt = Date.now();
-  await limiter.waitForRequestSlot();
-
-  assert.ok(Date.now() - startedAt >= 15);
+  assert.equal(maximumActive, leverSourceConfig.maxConcurrentRequests);
 });
 
 test("fetch rejects a malformed successful payload without retrying", async () => {
@@ -451,14 +462,14 @@ test("fetch rejects a malformed successful payload without retrying", async () =
   const fetcher = testFetcher({
     fetchImpl: async () => {
       attempts += 1;
-      return jsonResponse({ jobs: [{ id: "not-a-number" }] });
+      return jsonResponse([{ id: 42, text: "Bad posting" }]);
     },
   });
 
   await assert.rejects(
     fetcher(config({ maxAttempts: 3, retryBaseDelayMs: 0 })),
     (error: unknown) => {
-      assert.ok(error instanceof GreenhouseFetchError);
+      assert.ok(error instanceof LeverFetchError);
       assert.match(error.message, /unexpected payload/);
       return true;
     },

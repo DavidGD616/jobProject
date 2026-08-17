@@ -8,7 +8,9 @@ import * as schema from "./schema";
 
 const configuredPath = process.env.DATABASE_URL ?? "data/jobs.sqlite";
 const databasePath =
-  configuredPath === ":memory:" ? configuredPath : resolve(configuredPath);
+  configuredPath === ":memory:"
+    ? configuredPath
+    : resolve(/* turbopackIgnore: true */ configuredPath);
 
 function createConnection() {
   if (databasePath !== ":memory:") {

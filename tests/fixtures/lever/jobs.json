@@ -1,0 +1,81 @@
+[
+  {
+    "id": "929030c6-3ecc-46ce-96a1-81ac1eed244b",
+    "text": "Facilities Technician",
+    "hostedUrl": "https://jobs.lever.co/atomcomputing/929030c6-3ecc-46ce-96a1-81ac1eed244b",
+    "createdAt": 1785358811414,
+    "categories": {
+      "commitment": "Full-time",
+      "location": "Boulder, CO",
+      "team": "Operations",
+      "allLocations": ["Boulder, CO"]
+    },
+    "workplaceType": "onsite",
+    "salaryRange": {
+      "min": 75000,
+      "max": 100000,
+      "currency": "USD",
+      "interval": "per-year-salary"
+    },
+    "description": "<div><p>At Atom Computing, we build quantum computers using arrays of optically trapped neutral atoms that will achieve unprecedented computational breakthroughs.</p><p>The Facilities Technician supports the daily operations, maintenance, and safety of the organization’s physical workspace while also managing shipping and receiving activities.</p></div>",
+    "lists": [
+      {
+        "text": "Facilities Responsibilities",
+        "content": "<div><li>Perform routine and preventive maintenance on building systems, including plumbing, carpentry, HVAC, electrical, and mechanical systems.</li><li>Troubleshoot issues and complete repairs using sound judgment, technical skill, and personal initiative.</li></div>"
+      }
+    ],
+    "opening": "",
+    "additional": "<div><p>Atom Computing provides a wide variety of perks and benefits, including fully paid medical, dental, and vision insurance for our employees and their dependents.</p><p>The base salary range for this position is between $75,000 - $100,000, commensurate with experience.&nbsp;</p></div>"
+  },
+  {
+    "id": "ccea6f5c-97d7-4419-ad60-8b4e23b6b898",
+    "text": "Global Event Marketing Manager",
+    "hostedUrl": "https://jobs.lever.co/atomcomputing/ccea6f5c-97d7-4419-ad60-8b4e23b6b898",
+    "createdAt": 1780504606838,
+    "categories": {
+      "commitment": "Full-time",
+      "location": "Boulder, CO",
+      "team": "Marketing & Communications",
+      "allLocations": ["Boulder, CO"]
+    },
+    "workplaceType": "onsite",
+    "salaryRange": null,
+    "description": "<div><p>At Atom Computing, we build quantum computers using arrays of optically trapped neutral atoms that will empower customers to achieve unprecedented computational breakthroughs.</p>We are seeking a Global Event Marketing Manager who will create brand awareness, generate leads, and secure speaking opportunities for Atom at industry and corporate events.&nbsp;</div>",
+    "lists": [
+      {
+        "text": "Job Responsibilities",
+        "content": "<div><li><strong>Event Strategy:</strong> Lead the end-to-end strategy and execution of Atom Computing’s presence at premier quantum industry conferences.</li></div>"
+      }
+    ],
+    "opening": "",
+    "additional": "<div><p>The base salary range for this position is between $125,000 - $150,000 commensurate with experience.</p></div>"
+  },
+  {
+    "id": "41cc7c93-b291-4c2a-a69e-caf14390dd6b",
+    "text": "Principal Software Engineer - Control Systems",
+    "hostedUrl": "https://jobs.lever.co/atomcomputing/41cc7c93-b291-4c2a-a69e-caf14390dd6b",
+    "createdAt": 1784925591915,
+    "categories": {
+      "commitment": "Full-time",
+      "location": "Boulder, CO",
+      "team": "Control Systems",
+      "allLocations": ["Boulder, CO", "Austin, TX"]
+    },
+    "workplaceType": "hybrid",
+    "salaryRange": {
+      "min": 165000,
+      "max": 200000,
+      "currency": "USD",
+      "interval": "per-year-salary"
+    },
+    "description": "<div><p>At Atom Computing, we build quantum computers using arrays of optically trapped neutral atoms that will empower customers to achieve unprecedented computational breakthroughs.</p><p>We are seeking a Principal Software Engineer to help design and build the high-performance control systems that drive our next-generation quantum computing platforms.</p><p>This role is required to be in the office in Boulder or Austin at least 3 days per week.&nbsp;</p></div>",
+    "lists": [
+      {
+        "text": "Job Responsibilities",
+        "content": "<div><li>Build and test embedded firmware and software powering high-speed software defined radios, imaging pipelines, and precision scientific instrumentation.</li><li>Rapidly prototype and iterate using Rust, Python, C/C++, and CUDA.</li></div>"
+      }
+    ],
+    "opening": "",
+    "additional": "<div><p>The base salary range for this position is between $165,000 - $200,000, commensurate with experience.</p></div>"
+  }
+]
