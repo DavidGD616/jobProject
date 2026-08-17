@@ -1,0 +1,73 @@
+{
+  "apiVersion": "1",
+  "jobs": [
+    {
+      "id": "9c3cac9e-2a67-4d7e-8098-42092a628390",
+      "title": "Staff Product Designer",
+      "department": "Design",
+      "team": "Design",
+      "employmentType": "FullTime",
+      "location": "New York City, NY",
+      "shouldDisplayCompensationOnJobPostings": true,
+      "secondaryLocations": [],
+      "publishedAt": "2026-07-28T05:03:53.353+00:00",
+      "isListed": true,
+      "isRemote": true,
+      "workplaceType": "Hybrid",
+      "jobUrl": "https://jobs.ashbyhq.com/permitflow/9c3cac9e-2a67-4d7e-8098-42092a628390",
+      "applyUrl": "https://jobs.ashbyhq.com/permitflow/9c3cac9e-2a67-4d7e-8098-42092a628390/application",
+      "descriptionHtml": "<p style=\"min-height:1.5em\">PermitFlow is redefining how America builds. We’re an applied AI company serving the nation’s builders, tackling one of the largest information challenges in the economy: understanding <em>what can be built, where, and how</em>. Our AI agent workforce helps the fastest-growing construction companies navigate everything from permitting and licensing to inspections and project closeouts – accelerating housing, clean-energy, and infrastructure development across the country.</p><h1>What You’ll Do</h1><ul><li>Own strategy and decision-making for key product surfaces</li><li>Lead end-to-end design projects</li></ul>",
+      "compensation": {
+        "summaryComponents": [
+          {
+            "compensationType": "EquityPercentage",
+            "interval": "NONE",
+            "currencyCode": null,
+            "minValue": null,
+            "maxValue": null
+          },
+          {
+            "compensationType": "Salary",
+            "interval": "1 YEAR",
+            "currencyCode": "USD",
+            "minValue": 200000,
+            "maxValue": 275000
+          }
+        ]
+      }
+    },
+    {
+      "id": "62135ab3-8e10-4891-a3f5-38362e1fbf15",
+      "title": "Recruiting Coordinator (Remote)",
+      "department": "Virtual Admin",
+      "team": "Virtual Admin",
+      "employmentType": "Contract",
+      "location": "Remote",
+      "shouldDisplayCompensationOnJobPostings": true,
+      "secondaryLocations": [
+        { "location": "Indonesia" },
+        { "location": "Guyana" },
+        { "location": "Canada" },
+        { "location": "Philippines", "address": null }
+      ],
+      "publishedAt": "2026-03-23T23:46:06.471+00:00",
+      "isListed": true,
+      "isRemote": true,
+      "workplaceType": "Remote",
+      "jobUrl": "https://jobs.ashbyhq.com/permitflow/62135ab3-8e10-4891-a3f5-38362e1fbf15",
+      "applyUrl": "https://jobs.ashbyhq.com/permitflow/62135ab3-8e10-4891-a3f5-38362e1fbf15/application",
+      "descriptionHtml": "<p>PermitFlow’s mission is to streamline and simplify construction permitting in the $1.6 trillion United States construction market.</p><h1>✅ <strong>What You’ll Do:</strong></h1><ul><li>Identifying future hiring needs and developing job descriptions.</li></ul>",
+      "compensation": {
+        "summaryComponents": [
+          {
+            "compensationType": "Salary",
+            "interval": "1 HOUR",
+            "currencyCode": "USD",
+            "minValue": 5,
+            "maxValue": 7
+          }
+        ]
+      }
+    }
+  ]
+}
