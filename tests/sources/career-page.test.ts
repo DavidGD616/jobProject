@@ -64,9 +64,10 @@ test("career fetch CLI ingests a successful rendered snapshot", async () => {
     });
 
     const result = await runOnce(
-      { companyId: company.id, timeoutMs: 1_000 },
+      { companyId: company.id, timeoutMs: 1_000, http: true },
       {
         database: db,
+        checkRobots: false,
         now: () => now,
         fetchImpl: async () => new Response(
           '<ul><li class="job"><a class="title" href="/jobs/1">Engineer</a></li></ul>',
@@ -105,9 +106,10 @@ test("career fetch CLI records zero-row failures without closing jobs", async ()
 
     await assert.rejects(
       () => runOnce(
-        { companyId: company.id, timeoutMs: 1_000 },
+        { companyId: company.id, timeoutMs: 1_000, http: true },
         {
           database: db,
+          checkRobots: false,
           now: () => now,
           fetchImpl: async () => new Response("<main>No roles</main>", { status: 200 }),
         },

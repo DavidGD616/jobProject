@@ -14,19 +14,24 @@ import {
   sqlite,
 } from "@/db";
 import type { JobHuntDatabase } from "@/db";
+import { launchLocalChromium, asCareerPageBrowser } from "@/browser/playwright";
 import {
   extractCareerPagePostings,
   normalizeCareerPagePosting,
   renderCareerPage,
+  createSourceRequestLimiter,
+  fetchRobotsPolicy,
 } from "@/sources";
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const MAX_TIMEOUT_MS = 2_147_483_647;
+const CAREER_USER_AGENT = "job-hunt-agent/1.0 (+local career page fetch)";
 
 export interface CareerFetchOptions {
   companyId: number;
   timeoutMs: number;
   htmlFile?: string;
+  http: boolean;
   help: boolean;
 }
 
@@ -35,6 +40,7 @@ export interface CareerFetchDependencies {
   fetchImpl?: typeof fetch;
   readFileImpl?: typeof readFile;
   now?: () => Date;
+  checkRobots?: boolean;
 }
 
 function usage(): string {
@@ -48,6 +54,7 @@ Options:
   --company-id <n>      Company row to fetch (required)
   --timeout-ms <n>      HTML request timeout (default: 20000)
   --html-file <path>    Read a saved rendered HTML snapshot instead of HTTP
+  --http                Use native HTTP instead of local Chromium rendering
   --help, -h            Show this help
 `;
 }
@@ -64,6 +71,7 @@ export function parseArgs(args: readonly string[]): CareerFetchOptions {
   let companyId: number | undefined;
   let timeoutMs = DEFAULT_TIMEOUT_MS;
   let htmlFile: string | undefined;
+  let http = false;
   let help = false;
 
   for (let index = 0; index < args.length; index += 1) {
@@ -85,6 +93,8 @@ export function parseArgs(args: readonly string[]): CareerFetchOptions {
     } else if (argument?.startsWith("--html-file=")) {
       htmlFile = argument.slice("--html-file=".length);
       if (!htmlFile) throw new Error("--html-file requires a path");
+    } else if (argument === "--http") {
+      http = true;
     } else {
       throw new Error(`Unknown option: ${argument}`);
     }
@@ -96,7 +106,7 @@ export function parseArgs(args: readonly string[]): CareerFetchOptions {
   if (!help && companyId === undefined) {
     throw new Error("--company-id is required");
   }
-  return { companyId: companyId ?? 0, timeoutMs, htmlFile, help };
+  return { companyId: companyId ?? 0, timeoutMs, htmlFile, http, help };
 }
 
 async function fetchHtml(
@@ -110,7 +120,7 @@ async function fetchHtml(
     const response = await fetchImpl(url, {
       headers: {
         Accept: "text/html,application/xhtml+xml",
-        "User-Agent": "job-hunt-agent/1.0 (+local career page fetch)",
+        "User-Agent": CAREER_USER_AGENT,
       },
       signal: controller.signal,
     });
@@ -121,8 +131,32 @@ async function fetchHtml(
   }
 }
 
+async function assertRobotsAllowed(
+  url: string,
+  timeoutMs: number,
+  fetchImpl: typeof fetch,
+): Promise<void> {
+  const robots = await fetchRobotsPolicy(
+    {
+      targetUrl: url,
+      userAgent: CAREER_USER_AGENT,
+      timeoutMs,
+      maxAttempts: 2,
+      retryBaseDelayMs: 250,
+    },
+    {
+      fetchImpl,
+      requestLimiter: createSourceRequestLimiter({
+        maxConcurrentRequests: 1,
+        minRequestIntervalMs: 0,
+      }),
+    },
+  );
+  if (!robots.allows(url)) throw new Error(`robots.txt disallows ${url}`);
+}
+
 export async function runOnce(
-  options: Pick<CareerFetchOptions, "companyId" | "timeoutMs" | "htmlFile">,
+  options: Pick<CareerFetchOptions, "companyId" | "timeoutMs" | "htmlFile"> & { http?: boolean },
   dependencies: CareerFetchDependencies = {},
 ) {
   const database = dependencies.database ?? db;
@@ -154,7 +188,22 @@ export async function runOnce(
   let renderedHtml: string;
   if (options.htmlFile) {
     renderedHtml = await readFileImpl(resolve(options.htmlFile), "utf8");
+  } else if (!(options.http ?? false)) {
+    if (dependencies.checkRobots ?? true) await assertRobotsAllowed(careersUrl.toString(), options.timeoutMs, fetchImpl);
+    const session = await launchLocalChromium({
+      headless: true,
+      timeoutMs: options.timeoutMs,
+    });
+    try {
+      renderedHtml = await renderCareerPage(
+        asCareerPageBrowser(session.page, options.timeoutMs),
+        careersUrl.toString(),
+      );
+    } finally {
+      await session.close();
+    }
   } else {
+    if (dependencies.checkRobots ?? true) await assertRobotsAllowed(careersUrl.toString(), options.timeoutMs, fetchImpl);
     let body = "";
     renderedHtml = await renderCareerPage(
       {

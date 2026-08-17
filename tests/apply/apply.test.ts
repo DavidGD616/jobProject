@@ -7,7 +7,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 
 import { applicationRuns, applications, companies, contacts, events, extractionRules, jobs, llmRuns, matches, profiles, rankingFeedback, resumeVariants, sourcePolls, triage } from "@/db/schema";
-import { adapterForUrl, fillApplicationPlan, prepareApplication } from "@/apply";
+import { adapterForUrl, fillApplicationPlan, fillApplicationRun, prepareApplication } from "@/apply";
 import { saveProfile } from "@/matching";
 import { createApplication } from "@/tracking";
 
@@ -57,4 +57,46 @@ test("browser boundary fills only declared fields and has no submit operation", 
   });
   assert.deepEqual(result, { filled: ["email", "resume"], skipped: ["question"], submissionBlocked: true });
   assert.equal(calls.length, 3);
+});
+
+test("persisted browser runs update status after declared fields are filled", async () => {
+  const { db, sqlite } = createTestDatabase();
+  try {
+    const now = new Date("2026-08-17T12:00:00.000Z");
+    const company = db.insert(companies).values({ name: "Acme", slug: "acme", discoveredVia: "test", discoveredAt: now, createdAt: now }).returning().get()!;
+    const job = db.insert(jobs).values({ companyId: company.id, source: "greenhouse", sourceId: "1", url: "https://boards.greenhouse.io/acme/jobs/1", title: "Engineer", titleNorm: "engineer", description: "Build.", firstSeenAt: now, lastSeenAt: now, contentHash: "1" }).returning().get()!;
+    const application = createApplication({ jobId: job.id, database: db, now });
+    const run = db.insert(applicationRuns).values({
+      applicationId: application.id,
+      adapter: "greenhouse",
+      status: "ready_for_review",
+      fields: {
+        adapter: "greenhouse",
+        url: job.url,
+        fields: [{ key: "email", label: "Email", value: "a@example.com", selector: "#email", required: true, source: "profile" }],
+        customQuestions: [],
+        submissionBlocked: true,
+        instructions: [],
+      },
+      startedAt: now,
+      finishedAt: now,
+      error: null,
+    }).returning().get()!;
+    const calls: string[] = [];
+    const result = await fillApplicationRun({
+      runId: run.id,
+      database: db,
+      now,
+      page: {
+        goto: async (url) => { calls.push(`goto:${url}`); },
+        fill: async (selector, value) => { calls.push(`fill:${selector}:${value}`); },
+        setInputFiles: async () => { calls.push("file"); },
+      },
+    });
+    assert.deepEqual(result, { runId: run.id, filled: ["email"], skipped: [], submissionBlocked: true });
+    assert.equal(db.select().from(applicationRuns).get()?.status, "filled_for_review");
+    assert.deepEqual(calls, [`goto:${job.url}`, "fill:#email:a@example.com"]);
+  } finally {
+    sqlite.close();
+  }
 });
