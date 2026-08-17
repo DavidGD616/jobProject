@@ -8,6 +8,7 @@ export function AppNav() {
         <Link href="/">Open roles</Link>
         <Link href="/review">Review</Link>
         <Link href="/pipeline">Pipeline</Link>
+        <Link href="/tailor">Tailor</Link>
         <Link href="/profile">Profile</Link>
       </div>
     </nav>

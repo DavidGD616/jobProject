@@ -12,6 +12,7 @@ import {
   saveContact,
   updateApplication,
 } from "@/tracking";
+import { createTailoredVariant } from "@/tailor";
 
 function text(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -130,4 +131,13 @@ export async function addContactAction(formData: FormData): Promise<void> {
     database: db,
   });
   redirect("/pipeline?saved=1");
+}
+
+/** Deterministic, request-safe tailoring. LLM suggestions run via pnpm tailor. */
+export async function createTailorVariantAction(formData: FormData): Promise<void> {
+  const jobId = Number(text(formData, "job_id"));
+  if (!Number.isInteger(jobId)) redirect("/tailor?error=Invalid+job");
+  const profile = ensureActiveProfile(db);
+  await createTailoredVariant({ jobId, profile, database: db, allowLlm: false });
+  redirect("/tailor?saved=1");
 }

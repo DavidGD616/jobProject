@@ -14,6 +14,7 @@
     "jobs:fetch": "tsx src/ingest/cli.ts",
     "jobs:watch": "tsx src/ingest/cli.ts --watch",
     "jobs:rank": "tsx src/matching/cli.ts",
+    "tailor": "tsx src/tailor/cli.ts",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
     "db:migrate": "tsx src/db/migrate.ts"
   },
