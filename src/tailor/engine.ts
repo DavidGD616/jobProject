@@ -118,7 +118,7 @@ export async function createTailoredVariant(input: {
     pdfPath: null,
     createdAt: now,
   }).returning().get()!;
-  const exportDirectory = resolve(process.env.EXPORT_DIR ?? "data/exports");
+  const exportDirectory = resolve(/* turbopackIgnore: true */ process.env.EXPORT_DIR ?? "data/exports");
   await mkdir(exportDirectory, { recursive: true });
   const htmlPath = join(exportDirectory, `resume-variant-${variant.id}.html`);
   await writeFile(htmlPath, resumeToHtml(resume), "utf8");

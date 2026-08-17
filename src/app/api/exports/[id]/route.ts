@@ -16,7 +16,7 @@ export async function GET(request: Request, { params }: RouteProps): Promise<Res
   const variant = db.select().from(resumeVariants).where(eq(resumeVariants.id, id)).get();
   if (!variant) return new Response("Not found", { status: 404 });
   const format = new URL(request.url).searchParams.get("format") === "html" ? "html" : "pdf";
-  const configuredDirectory = resolve(process.env.EXPORT_DIR ?? "data/exports");
+  const configuredDirectory = resolve(/* turbopackIgnore: true */ process.env.EXPORT_DIR ?? "data/exports");
   const path = resolve(configuredDirectory, `resume-variant-${id}.${format}`);
   if (basename(path) !== `resume-variant-${id}.${format}`) return new Response("Not found", { status: 404 });
   try {

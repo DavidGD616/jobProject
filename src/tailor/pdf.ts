@@ -51,7 +51,7 @@ export async function renderPdfFromHtml(input: {
     `--print-to-pdf=${input.outputPath}`,
     `file://${htmlPath}`,
   ];
-  const child = spawn(command, args, { stdio: ["ignore", "ignore", "pipe"] });
+  const child = spawn(/* turbopackIgnore: true */ command, args, { stdio: ["ignore", "ignore", "pipe"] });
   let stderr = "";
   child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
   const timeoutMs = input.timeoutMs ?? 30_000;
