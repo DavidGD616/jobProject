@@ -56,7 +56,7 @@ export default async function Home({ searchParams }: PageProps) {
   const hasFilters = Boolean(filters.company || filters.title || filters.dateWindow !== "all");
 
   return (
-    <main className="min-h-screen px-4 py-4 sm:px-7 sm:py-7 lg:px-10 lg:py-10">
+    <main className="min-h-screen px-4 py-4 sm:px-7 sm:py-7 lg:px-10 lg:py-10" id="main-content">
       <div className="ledger-shell mx-auto max-w-[1480px] overflow-hidden border border-[var(--ledger-border)] bg-[var(--paper)] shadow-[0_24px_80px_rgba(45,35,17,0.12)]">
         <AppNav />
         <header className="ledger-masthead relative overflow-hidden px-6 py-7 text-[var(--paper)] sm:px-9 sm:py-9 lg:px-12">

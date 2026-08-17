@@ -40,6 +40,28 @@ body {
   color: var(--ink);
 }
 
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 100;
+  transform: translateY(-180%);
+  border: 2px solid var(--ink);
+  background: var(--signal);
+  color: var(--ink);
+  padding: 0.65rem 0.8rem;
+  font-family: "SFMono-Regular", "Cascadia Code", monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: transform 140ms ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
 .font-serif {
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, serif;
 }

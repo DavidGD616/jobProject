@@ -20,7 +20,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
   const query = await searchParams;
   const preferences = profile.preferences;
   return (
-    <main className="min-h-screen px-4 py-4 sm:px-7 sm:py-7 lg:px-10 lg:py-10">
+    <main className="min-h-screen px-4 py-4 sm:px-7 sm:py-7 lg:px-10 lg:py-10" id="main-content">
       <div className="ledger-shell mx-auto max-w-[1180px] overflow-hidden border border-[var(--ledger-border)] bg-[var(--paper)] shadow-[0_24px_80px_rgba(45,35,17,0.12)]">
         <AppNav />
         <header className="ledger-masthead px-6 py-8 text-[var(--paper)] sm:px-10">
