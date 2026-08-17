@@ -11,7 +11,8 @@ type ReviewPageProps = {
   searchParams: Promise<{ refreshed?: string; saved?: string; error?: string }>;
 };
 
-function scoreLabel(score: number | null, retrieval: number): string {
+function scoreLabel(learned: number | null, score: number | null, retrieval: number): string {
+  if (learned !== null) return `${Math.round(learned)} · learned`;
   return score === null ? `${Math.round(retrieval * 100)} · lexical` : `${score} · reranked`;
 }
 
@@ -41,7 +42,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
               <li className="review-card grid gap-5 px-6 py-7 sm:px-10 lg:grid-cols-[3.5rem_minmax(0,1fr)_14rem]" key={match.job.id}>
                 <p className="font-mono text-xs font-bold tracking-[0.16em] text-[var(--rust)]">{String(index + 1).padStart(2, "0")}</p>
                 <div className="min-w-0">
-                  <div className="flex flex-wrap items-start justify-between gap-3"><div><a className="font-serif text-2xl leading-tight tracking-[-0.035em] text-[var(--ink)] hover:text-[var(--rust)]" href={match.job.url} rel="noreferrer" target="_blank">{match.job.title} ↗</a><p className="mt-2 text-sm font-semibold text-[var(--ink-soft)]">{match.company.name}</p></div><span className="ledger-score">{scoreLabel(match.llmScore, match.retrievalScore)}</span></div>
+                  <div className="flex flex-wrap items-start justify-between gap-3"><div><a className="font-serif text-2xl leading-tight tracking-[-0.035em] text-[var(--ink)] hover:text-[var(--rust)]" href={match.job.url} rel="noreferrer" target="_blank">{match.job.title} ↗</a><p className="mt-2 text-sm font-semibold text-[var(--ink-soft)]">{match.company.name}</p></div><span className="ledger-score">{scoreLabel(match.learnedScore, match.llmScore, match.retrievalScore)}</span></div>
                   <div className="mt-4 flex flex-wrap gap-2 text-xs text-[var(--muted)]">{match.job.location ? <span className="ledger-tag">{match.job.location}</span> : null}{match.job.remoteType && match.job.remoteType !== "unknown" ? <span className="ledger-tag ledger-tag-signal capitalize">{match.job.remoteType}</span> : null}{match.job.seniority ? <span className="ledger-tag capitalize">{match.job.seniority}</span> : null}</div>
                   <p className="mt-4 max-w-3xl text-sm leading-6 text-[var(--ink-soft)]">{match.reasoning ?? "Retrieved through profile terms, title aliases, structured preferences, and freshness."}</p>
                   {match.strengths.length > 0 || match.gaps.length > 0 ? <div className="mt-4 grid gap-3 sm:grid-cols-2">{match.strengths.length > 0 ? <div><p className="ledger-kicker">Strengths</p><p className="mt-1 text-xs leading-5 text-[var(--ink-soft)]">{match.strengths.join(" · ")}</p></div> : null}{match.gaps.length > 0 ? <div><p className="ledger-kicker">Gaps</p><p className="mt-1 text-xs leading-5 text-[var(--ink-soft)]">{match.gaps.join(" · ")}</p></div> : null}</div> : null}

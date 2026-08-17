@@ -238,6 +238,7 @@ export const matches = sqliteTable(
     featureScore: real("feature_score").notNull(),
     retrievalScore: real("retrieval_score").notNull(),
     llmScore: integer("llm_score"),
+    learnedScore: real("learned_score"),
     reasoning: text("reasoning"),
     gaps: text("gaps", { mode: "json" }).$type<string[]>().notNull(),
     strengths: text("strengths", { mode: "json" }).$type<string[]>().notNull(),

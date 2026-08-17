@@ -110,6 +110,7 @@ function upsertMatch(database: JobHuntDatabase, input: {
     featureScore: input.feature,
     retrievalScore: input.retrieval,
     llmScore: null,
+    learnedScore: null,
     reasoning: null,
     gaps: [],
     strengths: [],
@@ -126,6 +127,7 @@ function upsertMatch(database: JobHuntDatabase, input: {
       featureScore: input.feature,
       retrievalScore: input.retrieval,
       llmScore: null,
+      learnedScore: null,
       reasoning: null,
       gaps: [],
       strengths: [],
@@ -200,6 +202,7 @@ export function retrieveMatches(
     featureScore: candidate.feature,
     retrievalScore: candidate.retrieval,
     llmScore: null,
+    learnedScore: null,
     reasoning: null,
     gaps: [],
     strengths: [],
@@ -229,8 +232,8 @@ export function listRankedMatches(
     .all()
     .filter(({ job, company }) => !company.blocked && !["skip", "block_company"].includes(decisions.get(job.id) ?? ""))
     .sort((left, right) => {
-      const leftScore = left.match.llmScore ?? Math.round(left.match.retrievalScore * 100);
-      const rightScore = right.match.llmScore ?? Math.round(right.match.retrievalScore * 100);
+      const leftScore = left.match.learnedScore ?? left.match.llmScore ?? Math.round(left.match.retrievalScore * 100);
+      const rightScore = right.match.learnedScore ?? right.match.llmScore ?? Math.round(right.match.retrievalScore * 100);
       return rightScore - leftScore || right.match.retrievalScore - left.match.retrievalScore;
     })
     .slice(0, limit);

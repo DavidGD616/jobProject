@@ -1,0 +1,1 @@
+ALTER TABLE `matches` ADD `learned_score` real;
