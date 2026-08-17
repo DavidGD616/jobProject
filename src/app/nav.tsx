@@ -9,6 +9,7 @@ export function AppNav() {
         <Link href="/review">Review</Link>
         <Link href="/pipeline">Pipeline</Link>
         <Link href="/tailor">Tailor</Link>
+        <Link href="/apply">Apply</Link>
         <Link href="/profile">Profile</Link>
       </div>
     </nav>

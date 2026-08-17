@@ -13,6 +13,7 @@ import {
   updateApplication,
 } from "@/tracking";
 import { createTailoredVariant } from "@/tailor";
+import { prepareApplication } from "@/apply";
 
 function text(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -140,4 +141,11 @@ export async function createTailorVariantAction(formData: FormData): Promise<voi
   const profile = ensureActiveProfile(db);
   await createTailoredVariant({ jobId, profile, database: db, allowLlm: false });
   redirect("/tailor?saved=1");
+}
+
+export async function prepareApplicationAction(formData: FormData): Promise<void> {
+  const applicationId = Number(text(formData, "application_id"));
+  if (!Number.isInteger(applicationId)) redirect("/apply?error=Invalid+application");
+  await prepareApplication({ applicationId, profile: ensureActiveProfile(db), database: db });
+  redirect("/apply?saved=1");
 }
