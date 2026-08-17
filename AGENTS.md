@@ -4,7 +4,7 @@ Local-only job-hunt agent: discover companies, aggregate openings from official 
 
 **This file is canonical for every coding agent.** `CLAUDE.md` imports it. Do not duplicate its content anywhere — update it here.
 
-**Status:** Phase 1 complete. Discovery, Greenhouse/Lever/Ashby adapters, scheduled polling, job persistence, and the local ledger UI are in place — see [docs/05-roadmap.md](docs/05-roadmap.md).
+**Status:** Phases 1–6 are implemented. Discovery, Greenhouse/Lever/Ashby adapters, scheduled polling, profile-aware ranking, tracking, grounded tailoring, local Chromium form filling, learning, and the local ledger UI are in place — see [docs/05-roadmap.md](docs/05-roadmap.md).
 
 **Stack:** TypeScript on Node 24 · pnpm · SQLite + FTS5 (WAL) · Next.js · Drizzle · Playwright (Chromium only) · LLM via installed CLIs.
 

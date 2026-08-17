@@ -32,82 +32,93 @@ The one that proves the whole thing works. Tier A of [00-vision](00-vision.md).
 
 The bulk probe is deliberately rate-limited across the three public ATS hosts. Keep those safeguards in place for future seed runs.
 
-## Phase 1.5 — LLM harness
+## Phase 1.5 — LLM harness ✅ done
 
 Build the CLI layer before anything depends on it. Debugging matching and the provider layer at the same time is the thing this phase exists to prevent.
 
-- Provider adapters for `claude` and one other (`codex` or `opencode`) — two is enough to prove the abstraction
-- Pin exact non-interactive flags per CLI; record them in the `llm-provider` skill
-- Sandboxing: tools disabled, empty temp `cwd`, hard timeout with kill
-- Parse ladder + one repair retry
-- `llm_runs` cache with the full key
-- Task → provider routing with fallback chain
-- **Bench** on 20 real job descriptions: latency, parse-failure rate, and useful batch size per provider
+- ✅ Provider adapters for `claude` and `codex`, with pinned non-interactive flags
+- ✅ Sandboxing: tools disabled, empty temp `cwd`, hard timeout with kill
+- ✅ Parse ladder + one repair retry
+- ✅ `llm_runs` cache with the full key
+- ✅ Task → provider routing with fallback chain
+- ✅ `pnpm llm:bench` benchmark harness for latency, parse failures, and batch size
 
 *Exit:* the same prompt runs through two providers and returns valid parsed JSON ≥95% of the time; the second run is served from cache; a killed CLI does not wedge the worker.
 
 Also worth settling here: whether `opencode serve` beats subprocess invocation on latency ([ADR-0007](adr/0007-llm-via-cli-subprocess.md), Open).
 
-## Phase 2 — Enrich + match
+## Phase 2 — Enrich + match ✅ done
 
 Tier B. Depends on Phase 1.5.
 
-- Structured profile input, `resume_json`, alias lists
-- Boilerplate stripping → `description_fts`, FTS5 index
-- Stage 1 filters, stage 2 lexical + feature retrieval
-- Stage 3 batched LLM rerank, **with field extraction folded into the same call**
-- LLM query expansion, cached per profile version
-- Ranked review UI with reasons and gaps, triage buttons, one-click `block_company`
-- Few-shot feedback from triage labels
-- Remaining discovery work: richer HN prose parsing after the LLM harness, Adzuna query, reverse URL extraction
-- Career-page sources: Playwright render + agent-generated selectors ([ADR-0009](adr/0009-local-browser-automation.md))
+- ✅ Structured profile input, `resume_json`, alias lists
+- ✅ Boilerplate stripping, lexical + feature retrieval, and stage-one filters
+- ✅ Batched LLM rerank with field extraction in the same call
+- ✅ LLM query expansion cached per profile version
+- ✅ Ranked review UI, triage buttons, and one-click `block_company`
+- ✅ Few-shot feedback from triage labels
+- ✅ Adzuna query parsing and reverse ATS URL extraction
+- ✅ Career-page rendering through local Chromium with cached selectors and zero-row failure handling ([ADR-0009](adr/0009-local-browser-automation.md))
 
 *Exit:* daily top-20 is good enough that you stop browsing raw listings. Precision@20 above ~50% by click-through, and known-good jobs reliably survive stage 2.
 
 Check stage 2 recall before tuning stage 3. If good jobs never reach the reranker, no amount of prompt work fixes it.
 
-## Phase 3 — Tracking
+## Phase 3 — Tracking ✅ done
 
 Small, unglamorous, high daily value. Do it before tailoring — it pays off from the first application.
 
-- Application records, status board
-- Append-only `events` timeline
-- Follow-up reminders
-- Contacts per company
-- Basic funnel stats
+- ✅ Application records and status board
+- ✅ Append-only `events` timeline
+- ✅ Follow-up reminders
+- ✅ Contacts per company
+- ✅ Basic funnel stats
 
 *Exit:* every application lives here, not in memory or a spreadsheet.
 
-## Phase 4 — Tailoring
+## Phase 4 — Tailoring ✅ done
 
 Tier C, first half.
 
-- Bullet selection and rewriting against a JD, from real facts only
-- Cover letter draft, human-edited
-- PDF rendering from `resume_json`
-- `resume_variants` — always know what was sent
+- ✅ Bullet selection and deterministic reordering from real facts only
+- ✅ Grounded cover-letter draft, human-edited in the UI
+- ✅ HTML and optional local Chromium PDF rendering from `resume_json`
+- ✅ `resume_variants` — every export is tied to its destination
 
 *Exit:* a tailored, human-approved resume + letter in under 10 minutes.
 
-## Phase 5 — Assisted apply
+## Phase 5 — Assisted apply ✅ done
 
 Tier C, second half. Last because it is the most brittle.
 
-- Per-ATS form adapters (Greenhouse and Lever first — largest coverage)
-- Fill fields, upload resume, **hard stop before submit** ([ADR-0004](adr/0004-human-in-the-loop-submission.md))
-- Detect and surface custom questions rather than guessing answers
+- ✅ Per-ATS form plans for Greenhouse, Lever, and a generic fallback
+- ✅ Local Chromium field filling and resume upload, with a **hard stop before submit** ([ADR-0004](adr/0004-human-in-the-loop-submission.md))
+- ✅ Custom questions are surfaced for manual answers rather than guessed
 
 *Exit:* Greenhouse and Lever forms fill correctly, and submission is always a human click.
 
-## Phase 6 — Learning
+## Phase 6 — Learning ✅ implemented
 
 Only once there is real data.
 
-- Logistic regression over the same structured features stage 2 already computes, blended with LLM score
-- Outcome loop from application results
-- Precision tracking over time
+- ✅ Logistic regression over the same structured features stage 2 computes, blended with LLM score
+- ✅ Outcome loop from application and triage results
+- ✅ `pnpm jobs:learn` model training and bounded learned-score persistence
 
-*Exit:* measured ranking improvement over the Phase 2 baseline. If it does not improve, delete it.
+*Operational follow-up:* collect enough local labels to measure ranking improvement over the Phase 2 baseline. If it does not improve, delete the blend.
+
+## Current commands
+
+The local UI is available at `/`, `/profile`, `/review`, `/pipeline`, `/tailor`,
+and `/apply`. Worker commands are intentionally separate from request paths:
+
+- `pnpm discover:seed` and `pnpm jobs:fetch` maintain the official ATS ledger.
+- `pnpm career:fetch -- --company-id <id>` replays a cached career-page rule.
+- `pnpm jobs:rank`, `pnpm jobs:learn`, and `pnpm llm:bench` run ranking work.
+- `pnpm tailor`, `pnpm apply:prepare`, and `pnpm apply:fill` prepare human-reviewed application materials.
+
+All browser work is local Chromium. No LLM or browser call runs in a page
+request, and no command contains a submission operation.
 
 ## Deliberately deferred
 
