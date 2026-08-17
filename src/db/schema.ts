@@ -134,6 +134,33 @@ export const sourcePolls = sqliteTable(
   ],
 );
 
+export type CareerPageSelectors = {
+  item: string;
+  title: string;
+  url: string;
+  location?: string;
+  description?: string;
+};
+
+export const extractionRules = sqliteTable(
+  "extraction_rules",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    companyId: integer("company_id").notNull().references(() => companies.id),
+    domain: text("domain").notNull(),
+    domFingerprint: text("dom_fingerprint").notNull(),
+    selectors: text("selectors", { mode: "json" }).$type<CareerPageSelectors>().notNull(),
+    generatedAt: integer("generated_at", { mode: "timestamp_ms" }).notNull(),
+    generatedBy: text("generated_by"),
+    lastOkAt: integer("last_ok_at", { mode: "timestamp_ms" }),
+    failCount: integer("fail_count").notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex("extraction_rules_company_domain_uq").on(table.companyId, table.domain),
+    index("extraction_rules_fail_idx").on(table.failCount),
+  ],
+);
+
 /**
  * Every structured CLI invocation is retained as both a cache entry and an
  * audit record. The unique key deliberately includes the rendered prompt
@@ -373,6 +400,8 @@ export type Job = typeof jobs.$inferSelect;
 export type NewJob = typeof jobs.$inferInsert;
 export type SourcePoll = typeof sourcePolls.$inferSelect;
 export type NewSourcePoll = typeof sourcePolls.$inferInsert;
+export type ExtractionRule = typeof extractionRules.$inferSelect;
+export type NewExtractionRule = typeof extractionRules.$inferInsert;
 export type LlmRun = typeof llmRuns.$inferSelect;
 export type NewLlmRun = typeof llmRuns.$inferInsert;
 export type Profile = typeof profiles.$inferSelect;

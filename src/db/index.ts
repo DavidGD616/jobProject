@@ -16,3 +16,4 @@ export {
 } from "./source-polls";
 export type { DueSourcePoll } from "./source-polls";
 export type { JobHuntDatabase } from "./types";
+export { getExtractionRule, recordExtractionResult, saveExtractionRule, shouldRegenerateRule } from "./extraction-rules";
