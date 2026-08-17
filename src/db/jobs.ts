@@ -1,6 +1,7 @@
-import { and, eq, inArray, isNull, lt } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt } from "drizzle-orm";
 
-import { applyIngestHeuristics, contentHash } from "@/ingest";
+import { contentHash } from "@/ingest/hash";
+import { applyIngestHeuristics } from "@/ingest/heuristics";
 import type { NormalizedPosting } from "@/sources";
 
 import { jobs } from "./schema";
@@ -41,10 +42,12 @@ function reconcileHashGroup(
   hash: string,
 ): number {
   const members = db
-    .select({ id: jobs.id })
+    .select({ id: jobs.id, closedAt: jobs.closedAt })
     .from(jobs)
     .where(and(eq(jobs.companyId, companyId), eq(jobs.contentHash, hash)))
-    .orderBy(jobs.firstSeenAt, jobs.id)
+    // An open duplicate is a more useful canonical job than an older closed
+    // one; null closedAt values sort first in SQLite's ascending order.
+    .orderBy(asc(jobs.closedAt), jobs.firstSeenAt, jobs.id)
     .all();
   const canonical = members[0];
   if (!canonical) return 0;
@@ -69,7 +72,7 @@ function reconcileHashGroup(
  * Insert or refresh one source's observed postings and keep exact/content-hash
  * deduplication reversible through jobs.canonicalId.
  */
-export async function ingestObservedPostings(
+function writeObservedPostings(
   db: JobHuntDatabase,
   input: {
     company: Company;
@@ -77,75 +80,73 @@ export async function ingestObservedPostings(
     postings: readonly ObservedPosting[];
     observedAt: Date;
   },
-): Promise<JobIngestSummary> {
+): JobIngestSummary {
   const summary = emptySummary();
 
-  db.transaction((tx) => {
-    const touchedHashes = new Set<string>();
+  const touchedHashes = new Set<string>();
 
-    for (const observed of input.postings) {
-      const normalized = applyIngestHeuristics(observed.posting);
-      const nextHash = contentHash({
-        titleNorm: normalized.titleNorm,
-        companySlug: input.company.slug,
-        description: normalized.description,
-      });
-      const existing = tx
-        .select({ id: jobs.id, contentHash: jobs.contentHash })
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.source, input.source),
-            eq(jobs.sourceId, observed.sourceId),
-          ),
-        )
-        .limit(1)
-        .all();
+  for (const observed of input.postings) {
+    const normalized = applyIngestHeuristics(observed.posting);
+    const nextHash = contentHash({
+      titleNorm: normalized.titleNorm,
+      companySlug: input.company.slug,
+      description: normalized.description,
+    });
+    const existing = db
+      .select({ id: jobs.id, contentHash: jobs.contentHash })
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.source, input.source),
+          eq(jobs.sourceId, observed.sourceId),
+        ),
+      )
+      .limit(1)
+      .all();
 
-      const values = {
-        companyId: input.company.id,
-        source: input.source,
-        sourceId: observed.sourceId,
-        url: normalized.url,
-        title: normalized.title,
-        titleNorm: normalized.titleNorm,
-        description: normalized.description,
-        location: normalized.location ?? null,
-        remoteType: normalized.remoteType ?? null,
-        salaryMin: normalized.salaryMin ?? null,
-        salaryMax: normalized.salaryMax ?? null,
-        salaryPeriod: normalized.salaryPeriod ?? null,
-        currency: normalized.currency ?? null,
-        seniority: normalized.seniority ?? null,
-        stack: normalized.stack ?? null,
-        extractionTier: normalized.extractionTier,
-        postedAt: normalized.postedAt ?? null,
-        lastSeenAt: input.observedAt,
-        missingSinceAt: null,
-        closedAt: null,
-        contentHash: nextHash,
-      };
+    const values = {
+      companyId: input.company.id,
+      source: input.source,
+      sourceId: observed.sourceId,
+      url: normalized.url,
+      title: normalized.title,
+      titleNorm: normalized.titleNorm,
+      description: normalized.description,
+      location: normalized.location ?? null,
+      remoteType: normalized.remoteType ?? null,
+      salaryMin: normalized.salaryMin ?? null,
+      salaryMax: normalized.salaryMax ?? null,
+      salaryPeriod: normalized.salaryPeriod ?? null,
+      currency: normalized.currency ?? null,
+      seniority: normalized.seniority ?? null,
+      stack: normalized.stack ?? null,
+      extractionTier: normalized.extractionTier,
+      postedAt: normalized.postedAt ?? null,
+      lastSeenAt: input.observedAt,
+      missingSinceAt: null,
+      closedAt: null,
+      contentHash: nextHash,
+    };
 
-      if (existing[0]) {
-        tx.update(jobs).set(values).where(eq(jobs.id, existing[0].id)).run();
-        summary.updated += 1;
-        touchedHashes.add(existing[0].contentHash);
-      } else {
-        tx.insert(jobs).values({
-          ...values,
-          firstSeenAt: input.observedAt,
-        }).run();
-        summary.inserted += 1;
-      }
-      touchedHashes.add(nextHash);
+    if (existing[0]) {
+      db.update(jobs).set(values).where(eq(jobs.id, existing[0].id)).run();
+      summary.updated += 1;
+      touchedHashes.add(existing[0].contentHash);
+    } else {
+      db.insert(jobs).values({
+        ...values,
+        firstSeenAt: input.observedAt,
+      }).run();
+      summary.inserted += 1;
     }
+    touchedHashes.add(nextHash);
+  }
 
-    for (const hash of touchedHashes) {
-      mergeSummary(summary, {
-        canonicalized: reconcileHashGroup(tx, input.company.id, hash),
-      });
-    }
-  });
+  for (const hash of touchedHashes) {
+    mergeSummary(summary, {
+      canonicalized: reconcileHashGroup(db, input.company.id, hash),
+    });
+  }
 
   return summary;
 }
@@ -155,10 +156,10 @@ export async function ingestObservedPostings(
  * omission records missingSinceAt; the second consecutive omission closes the
  * row. Conditional 304 responses never call this function.
  */
-export async function markMissingSourceJobs(
+function markMissingSourceJobsInTransaction(
   db: JobHuntDatabase,
   input: { companyId: number; source: string; observedAt: Date },
-): Promise<Pick<JobIngestSummary, "firstMissing" | "closed">> {
+): Pick<JobIngestSummary, "firstMissing" | "closed"> {
   const absent = db
     .select({ id: jobs.id, missingSinceAt: jobs.missingSinceAt })
     .from(jobs)
@@ -195,4 +196,48 @@ export async function markMissingSourceJobs(
   }
 
   return { firstMissing: firstMissingIds.length, closed: closingIds.length };
+}
+
+/** Insert/refresh an observation set without evaluating absence state. */
+export async function ingestObservedPostings(
+  db: JobHuntDatabase,
+  input: {
+    company: Company;
+    source: string;
+    postings: readonly ObservedPosting[];
+    observedAt: Date;
+  },
+): Promise<JobIngestSummary> {
+  return db.transaction((tx) => writeObservedPostings(tx, input));
+}
+
+/** Record one successful source snapshot atomically with its staleness sweep. */
+export async function ingestSourceSnapshot(
+  db: JobHuntDatabase,
+  input: {
+    company: Company;
+    source: string;
+    postings: readonly ObservedPosting[];
+    observedAt: Date;
+  },
+): Promise<JobIngestSummary> {
+  return db.transaction((tx) => {
+    const summary = writeObservedPostings(tx, input);
+    mergeSummary(
+      summary,
+      markMissingSourceJobsInTransaction(tx, {
+        companyId: input.company.id,
+        source: input.source,
+        observedAt: input.observedAt,
+      }),
+    );
+    return summary;
+  });
+}
+
+export async function markMissingSourceJobs(
+  db: JobHuntDatabase,
+  input: { companyId: number; source: string; observedAt: Date },
+): Promise<Pick<JobIngestSummary, "firstMissing" | "closed">> {
+  return markMissingSourceJobsInTransaction(db, input);
 }

@@ -28,7 +28,7 @@ The one that proves the whole thing works. Tier A of [00-vision](00-vision.md).
 - Scheduled fetch + `last_seen_at` / `closed_at` staleness sweep
 - Minimal list UI: filter by company, title, date
 
-*Exit:* `pnpm discover:seed` finds ≥300 live boards unattended; `pnpm fetch` pulls ≥5,000 open jobs; duplicate rate under 5%; re-running changes nothing but `last_seen_at`.
+*Exit:* `pnpm discover:seed` finds ≥300 live boards unattended; `pnpm jobs:fetch` pulls ≥5,000 open jobs; duplicate rate under 5%; re-running changes nothing but `last_seen_at`.
 
 The probe is the riskiest part of this phase — it is thousands of requests against three hosts, and it runs before anything else works. Rate limit it before running it at scale.
 

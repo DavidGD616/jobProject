@@ -112,7 +112,10 @@ export const sourcePolls = sqliteTable(
     etag: text("etag"),
     lastFetchedAt: integer("last_fetched_at", { mode: "timestamp_ms" }),
     lastSuccessfulAt: integer("last_successful_at", { mode: "timestamp_ms" }),
+    /** The worker's persisted cadence/backoff decision. */
+    nextPollAt: integer("next_poll_at", { mode: "timestamp_ms" }),
     consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    lastStatus: text("last_status"),
     lastError: text("last_error"),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
@@ -125,6 +128,7 @@ export const sourcePolls = sqliteTable(
       table.source,
       table.lastFetchedAt,
     ),
+    index("source_polls_source_due_idx").on(table.source, table.nextPollAt),
   ],
 );
 

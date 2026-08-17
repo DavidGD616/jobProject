@@ -44,8 +44,8 @@ export type SourceFetchResult<TRawPosting> =
  * The source-owned portion of a canonical posting produced by normalize().
  * Ingest adds the registered adapter name, stable source ID, company ID,
  * observation timestamps, content hash, and deduplication links before
- * inserting a row into jobs. Enrichment owns the indexed description and
- * extraction tier; the staleness sweep owns closedAt.
+ * inserting a row into jobs. Ingest owns heuristic extraction and the
+ * staleness sweep; Phase 2 enrichment owns the indexed description.
  */
 export type NormalizedPosting = Omit<
   NewJob,
@@ -57,6 +57,7 @@ export type NormalizedPosting = Omit<
   | "extractionTier"
   | "firstSeenAt"
   | "lastSeenAt"
+  | "missingSinceAt"
   | "closedAt"
   | "contentHash"
   | "canonicalId"

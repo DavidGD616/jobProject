@@ -11,6 +11,8 @@
     "test": "tsx --test 'tests/**/*.test.ts'",
     "check": "pnpm lint && pnpm typecheck",
     "discover:seed": "tsx src/discovery/cli.ts",
+    "jobs:fetch": "tsx src/ingest/cli.ts",
+    "jobs:watch": "tsx src/ingest/cli.ts --watch",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
     "db:migrate": "tsx src/db/migrate.ts"
   },

@@ -77,8 +77,8 @@ Two loops are what make the system improve rather than just aggregate:
 |---|---|---|---|
 | `discovery/*` | candidate names, URLs | rows in `companies` | weekly |
 | `sources/*` | company row + cached validator | `SourceFetchResult<RawPosting>` | scheduled |
-| `ingest` | `RawPosting[]` | rows in `jobs` | scheduled |
-| `enrich` | `Job` | heuristic fields + `description_fts` | queued, per new job. **no LLM** |
+| `ingest` | `RawPosting[]` | normalized, heuristically enriched rows in `jobs` | scheduled |
+| `enrich` | `Job` | boilerplate-stripped `description_fts` | queued, per new job. **no LLM** |
 | `match` | `Job[]`, `Profile` | rows in `matches` | queued, after enrich |
 | `llm` | task + prompt | parsed result, cached | called by match / tailor / discovery |
 | `tailor` | `Job`, `Profile` | resume variant + cover letter draft | on demand |
@@ -101,7 +101,7 @@ company slug, and the description with the shared helper. Enrich alone writes
 `description_fts` and `extraction_tier`; the staleness sweep alone writes
 `closed_at`.
 
-`normalize` being pure and I/O-free is the rule that keeps ingest testable against recorded fixtures.
+`normalize` being pure and I/O-free is the rule that keeps ingest testable against recorded fixtures. Ingest applies deterministic salary, seniority, and remote heuristics only where the source left a field empty; source-supplied values remain authoritative. Boilerplate stripping and FTS work remain Phase 2.
 
 `SourceFetchResult` distinguishes `{ kind: "fetched", postings, etag }` from
 `{ kind: "not_modified", etag }`. The scheduled poller persists each ETag by

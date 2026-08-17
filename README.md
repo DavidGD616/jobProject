@@ -36,3 +36,17 @@ pnpm db:migrate
 ```
 
 See [docs/README.md](docs/README.md) for the architecture and roadmap.
+
+## Phase 1 workflow
+
+After applying migrations, derive company boards and poll their job postings:
+
+```bash
+pnpm db:migrate
+pnpm discover:seed
+pnpm jobs:fetch
+```
+
+`pnpm jobs:fetch` only polls sources that are due, active, and not blocked. For
+a local long-running worker, use `pnpm jobs:watch`; it scans for due work every
+minute and remains bound to local SQLite state.

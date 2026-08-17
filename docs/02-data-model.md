@@ -85,7 +85,9 @@ source_polls (
   etag                  text
   last_fetched_at       timestamp          -- includes failed attempts; drives cadence
   last_successful_at    timestamp
+  next_poll_at          timestamp          -- normal cadence or bounded failure backoff
   consecutive_failures  integer default 0
+  last_status           text
   last_error            text
   updated_at            timestamp not null
   unique (company_id, source)
@@ -257,7 +259,7 @@ jobs (last_seen_at)                    -- staleness sweep
 jobs (missing_since_at) where open     -- second-absence closure sweep
 companies (ats_type, active) where active  -- the fetch loop's driving query
 companies (blocked) where blocked          -- filter exclusions
-source_polls (source, last_fetched_at) -- source worker cadence
+source_polls (source, next_poll_at)    -- source worker due-work lookup
 FTS index on jobs.description_fts + title    -- stage 2a retrieval
 matches (retrieval_score desc)         -- ranked list without LLM
 matches (llm_score desc)               -- ranked list with LLM
