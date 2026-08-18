@@ -1,3 +1,5 @@
+export { stripBoilerplate } from "@/ingest/heuristics";
+
 const STOP_WORDS = new Set([
   "and", "the", "with", "for", "from", "that", "this", "your", "you", "our",
   "are", "will", "have", "has", "not", "but", "job", "role", "team", "work",
@@ -12,14 +14,6 @@ export function tokenize(input: string): string[] {
     .split(/\s+/)
     .map((token) => token.replace(/^[-./]+|[-./]+$/g, ""))
     .filter((token) => token.length >= 2 && !STOP_WORDS.has(token));
-}
-
-/** Remove common benefit/EEO boilerplate before lexical retrieval. */
-export function stripBoilerplate(input: string): string {
-  const chunks = input.split(/\n{2,}/).filter((chunk) => {
-    return !/(equal opportunity|benefits package|what we offer|perks and benefits|privacy notice|accommodations statement)/i.test(chunk);
-  });
-  return chunks.join("\n\n").trim().slice(0, 80_000);
 }
 
 export function profileTerms(input: {

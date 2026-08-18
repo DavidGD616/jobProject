@@ -1,7 +1,9 @@
 import Link from "next/link";
 
+import { displayCompanyName } from "@/db";
 import { listOpenJobs, parseJobListFilters } from "@/db/job-list";
 
+import { CompanyPicker } from "./company-picker";
 import { AppNav } from "./nav";
 
 export const runtime = "nodejs";
@@ -54,6 +56,7 @@ export default async function Home({ searchParams }: PageProps) {
   const data = listOpenJobs(filters);
   const visibleCount = data.jobs.length;
   const hasFilters = Boolean(filters.company || filters.title || filters.dateWindow !== "all");
+  const companyOptions = data.companies.map((company) => ({ ...company, name: displayCompanyName(company.name) }));
 
   return (
     <main className="min-h-screen px-4 py-4 sm:px-7 sm:py-7 lg:px-10 lg:py-10" id="main-content">
@@ -104,19 +107,9 @@ export default async function Home({ searchParams }: PageProps) {
             </div>
 
             <form className="mt-7 grid gap-5" method="get">
-              <label className="grid gap-2 text-sm font-semibold text-[var(--ink)]" htmlFor="company">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--ink)]">
                 Company
-                <select
-                  className="ledger-control"
-                  defaultValue={filters.company ?? ""}
-                  id="company"
-                  name="company"
-                >
-                  <option value="">Every live board</option>
-                  {data.companies.map((company) => (
-                    <option key={company.slug} value={company.slug}>{company.name}</option>
-                  ))}
-                </select>
+                <CompanyPicker companies={companyOptions} defaultSlug={filters.company} />
               </label>
 
               <label className="grid gap-2 text-sm font-semibold text-[var(--ink)]" htmlFor="title">
@@ -184,16 +177,11 @@ export default async function Home({ searchParams }: PageProps) {
                         {String(index + 1).padStart(2, "0")}
                       </p>
                       <div className="min-w-0">
-                        <a
-                          className="inline-flex max-w-full items-baseline gap-2 font-serif text-2xl leading-[1.05] tracking-[-0.035em] text-[var(--ink)] transition-colors hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rust)] sm:text-[1.7rem]"
-                          href={job.url}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          <span className="truncate">{job.title}</span>
-                          <span aria-hidden="true" className="font-sans text-base">↗</span>
-                        </a>
-                        <p className="mt-2 text-sm font-semibold text-[var(--ink-soft)]">{job.companyName}</p>
+                        <div className="flex max-w-full items-baseline gap-2">
+                          <Link className="truncate font-serif text-2xl leading-[1.05] tracking-[-0.035em] text-[var(--ink)] transition-colors hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rust)] sm:text-[1.7rem]" href={`/jobs/${job.id}`}>{job.title}</Link>
+                          <a aria-label={`Open ${job.title} at ${displayCompanyName(job.companyName)} in a new tab`} className="shrink-0 font-sans text-base text-[var(--muted)] transition-colors hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rust)]" href={job.url} rel="noreferrer" target="_blank"><span aria-hidden="true">↗</span></a>
+                        </div>
+                        <p className="mt-2 text-sm font-semibold text-[var(--ink-soft)]">{displayCompanyName(job.companyName)}</p>
                         <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 text-xs text-[var(--muted)]">
                           <span>{formatDate(job.postedAt ?? job.firstSeenAt)}</span>
                           {job.location ? <span>{job.location}</span> : null}

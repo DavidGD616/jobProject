@@ -32,6 +32,8 @@ Descriptions come back as HTML. Sanitize to text at normalize time — never sto
 For companies with no ATS, or a custom careers page that loads listings client-side. Local Playwright renders the page; cached selectors extract the rows ([ADR-0009](adr/0009-local-browser-automation.md)).
 
 - Selectors are generated once by a CLI agent, stored in `extraction_rules`, then replayed deterministically
+- First-seen, structurally redesigned, and repeated-zero-row pages generate rules in the worker command only. The CLI receives a capped sanitized DOM, its JSON is limited to the replay parser's `tag` or `tag.class` selector syntax, and the producing provider/model is recorded with the rule.
+- A structural DOM change replaces and replays the cached rule once. After two consecutive zero-row replays, the worker regenerates and retries once; another zero remains a failure, never an empty board.
 - **Zero extracted rows is a failure, not an empty result.** A redesigned page and a company with no openings must not look the same
 - Slower and heavier than JSON. Lower cadence, lower priority
 - `robots.txt` is checked before rendering; rate limits apply as everywhere else
@@ -41,7 +43,8 @@ For companies with no ATS, or a custom careers page that loads listings client-s
 
 One, kept deliberately: **Adzuna** (free key, broad coverage, real salary data).
 
-Its listings are a lower-quality copy of postings reachable at the origin. Its real value is discovery — see below. Treat its postings as a fallback, and prefer the ATS copy whenever dedup finds both.
+Its listings are not stored as jobs. Its value is discovery: find a company,
+then verify and poll its official board — see below.
 
 ## Discovery sources
 
@@ -51,8 +54,17 @@ Per [ADR-0010](adr/0010-company-discovery.md), the company list is derived. Four
 |---|---|---|
 | **Bulk probe** | Slugify candidate names, probe all ATS endpoints, keep the 200s | Hundreds, one-time seed |
 | **HN "Who is hiring"** | Rolling monthly threads via the free Algolia API → names → probe | Initial automatic seed + dozens/month |
-| **Aggregator query** | Search Adzuna by role + location, read company names off results | Companies outside any hand-written list |
-| **Reverse extraction** | Pull the ATS token out of an aggregator listing's apply URL: `boards.greenhouse.io/{token}/jobs/…` | Best quality — promotes straight to Tier 1 |
+| **Aggregator query** | Search Adzuna by saved profile role + location, read company names off results | Companies outside any hand-written list |
+| **Reverse extraction** | Pull the ATS token out of an aggregator result's `redirect_url`: `boards.greenhouse.io/{token}/jobs/…` | Best quality — one direct official-board probe |
+
+`pnpm discover:seed` combines the HN candidates with an Adzuna query when both
+`ADZUNA_APP_ID` and `ADZUNA_API_KEY` are configured. The query uses a saved title
+alias, headline, or experience title and its first saved location; it never
+takes a company name as input. Missing credentials, a profile with no role, or
+an Adzuna source failure is reported in the local run summary while HN discovery
+continues. Every candidate — including a direct ATS token extracted from an
+Adzuna `redirect_url` — passes through the same robots-aware, rate-limited
+shared verifier before anything is upserted.
 
 Probing is the one part of the system most likely to get an IP blocked, and it runs before anything else works. Cap concurrency, rate limit hard, spread it out.
 
@@ -112,4 +124,4 @@ Append findings here as they surface — this section is the reason the doc exis
 - **Ashby:** the public board endpoint is `GET /posting-api/job-board/{name}?includeCompensation=true`; it returns the board's current postings in one `jobs` array. `descriptionHtml` and `descriptionPlain` are both published on observed boards; the adapter sanitizes the HTML, falling back to plain text if needed. `isRemote` may be true for a `Hybrid` role, so `workplaceType` takes precedence when deriving `remote_type`. Where a board publishes it, `compensation.summaryComponents` carries structured salary amount, interval, and currency; mixed currencies or intervals remain unset rather than being conflated.
 - **Greenhouse:** the public board endpoint is `GET /v1/boards/{token}/jobs?content=true`; descriptions arrive entity-encoded HTML and are decoded and reduced to plain text by the adapter. The list response includes `meta.total`, but the Job Board endpoint returns the board's current postings in one response rather than using the Harvest `page`/`per_page` pagination contract. It returns an `ETag`; the adapter sends it as `If-None-Match` on later polls and represents a 304 as `not_modified`, never an empty board. The registered Tier 1 policy runs every 6h, permits two concurrent board polls, spaces request starts by 500ms, and defers the source after a 429 for the full `Retry-After` delay.
 - **Lever:** `GET /v0/postings/{company}?mode=json` returns the entire board as a bare JSON array, with an `ETag` that supports `If-None-Match` and 304 responses. A job's HTML is split across `description`, optional list sections, and `additional`; the adapter joins and sanitizes those fields. It uses `categories.allLocations` when present and `workplaceType` before location text for remote classification. Lever currently publishes `Crawl-delay: 1` in `api.lever.co/robots.txt`, so its Tier 1 policy spaces starts by one second while allowing at most two board polls.
-- **Bulk probe:** `pnpm discover:seed` derives candidates from the latest 36 monthly HN hiring threads (or one reproducible `--hn-story-id`), so it never asks the user to supply company names. On 2026-08-17, the unattended exit run processed 424 ATS-hinted candidates and verified 322 live official boards. It admits only top-level listings with an exact official Greenhouse, Lever, or Ashby URL: explicit `Company:`/`Company Name:` headings are accepted, while pipe headings must normalize to that board's token. That conservative rule prevents titles, locations, and reply text from becoming companies, while richer HN prose parsing remains deferred until the LLM harness exists. The URL supplies a single ATS/token hint; unhinted sources use compact/hyphenated/legal-suffix-stripped slugs across supported hosts. Probes check and honor each API origin's robots policy, space starts by one second per host (or a stricter published delay), cache confirmed 404s under `data/`, and write detailed attempts to `data/discovery-last-run.json`. Repeated retryable failures, invalid 2xx payloads, or access-denied responses pause the affected host, stop the batch, skip DB writes, and return a non-zero exit code. Verified boards alone are upserted into `companies`; the probe does not fetch or store job postings.
+- **Bulk probe:** `pnpm discover:seed` derives candidates from the latest 36 monthly HN hiring threads (or one reproducible `--hn-story-id`) and, when credentials are present, a saved-profile Adzuna role/location query. It never asks the user to supply company names. On 2026-08-17, the unattended HN exit run processed 424 ATS-hinted candidates and verified 322 live official boards. HN admits only top-level listings with an exact official Greenhouse, Lever, or Ashby URL: explicit `Company:`/`Company Name:` headings are accepted, while pipe headings must normalize to that board's token. That conservative rule prevents titles, locations, and reply text from becoming companies. An Adzuna `redirect_url` with an official board URL supplies one exact ATS/token hint; ordinary company results use compact/hyphenated/legal-suffix-stripped slugs across supported hosts. The Adzuna API and public boards check and honor their origin's robots policy, space starts by one second per host (or a stricter published delay), back off on retryable responses, cache confirmed ATS 404s under `data/`, and write detailed attempts to `data/discovery-last-run.json`. Repeated ATS retryable failures, invalid 2xx payloads, or access-denied responses pause the affected host, stop the batch, skip DB writes, and return a non-zero exit code. Verified boards alone are upserted into `companies`; neither discovery source stores aggregator listings as jobs.

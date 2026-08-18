@@ -1,11 +1,11 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { companies, jobs, matches, triage } from "@/db/schema";
 import type { Job, Match, Profile } from "@/db/schema";
 import type { JobHuntDatabase } from "@/db/types";
 
-import { profileTerms, lexicalScore, stripBoilerplate } from "./text";
+import { profileTerms, lexicalScore, stripBoilerplate, tokenize } from "./text";
 
 const SENIORITY_ORDER = ["intern", "junior", "mid", "senior", "staff", "lead"];
 
@@ -26,6 +26,83 @@ function latestTriage(database: JobHuntDatabase, profileId: number): Map<number,
 
 function textOf(job: Job): string {
   return `${job.title}\n${job.description}`.toLowerCase();
+}
+
+function ftsPhrase(term: string): string | null {
+  const tokens = tokenize(term);
+  if (tokens.length === 0) return null;
+  // Phrase quoting keeps profile text literal in FTS5's query grammar. The
+  // query itself remains parameterized below; this only prevents a profile
+  // term such as `OR` from changing the FTS expression's meaning.
+  return `"${tokens.join(" ").replaceAll('"', '""')}"`;
+}
+
+function ftsMatchQuery(terms: Array<{ term: string; weight: number }>): string | null {
+  const phrases = [...new Set(terms.flatMap((item) => {
+    const phrase = ftsPhrase(item.term);
+    return phrase ? [phrase] : [];
+  }))];
+  return phrases.length > 0 ? phrases.join(" OR ") : null;
+}
+
+/**
+ * Existing databases may predate the ingestion-time FTS materialization.
+ * Backfill only those legacy rows once; all new and refreshed postings write
+ * their stripped text during ingestion and the FTS triggers index it there.
+ */
+function refreshDescriptionFts(database: JobHuntDatabase): void {
+  const rows = database.select({
+    id: jobs.id,
+    description: jobs.description,
+    descriptionFts: jobs.descriptionFts,
+  }).from(jobs).where(and(isNull(jobs.closedAt), isNull(jobs.descriptionFts))).all();
+  for (const row of rows) {
+    const descriptionFts = stripBoilerplate(row.description);
+    if (descriptionFts !== row.descriptionFts) {
+      database.update(jobs).set({ descriptionFts }).where(eq(jobs.id, row.id)).run();
+    }
+  }
+}
+
+type FtsCandidate = {
+  job: Job;
+  company: typeof companies.$inferSelect;
+  bm25: number;
+};
+
+function ftsCandidates(
+  database: JobHuntDatabase,
+  matchQuery: string,
+): FtsCandidate[] {
+  const bm25 = sql<number>`bm25(jobs_fts, 8.0, 1.0)`.as("bm25_score");
+  return database.select({ job: jobs, company: companies, bm25 })
+    .from(jobs)
+    .innerJoin(sql`jobs_fts`, sql`jobs_fts.rowid = ${jobs.id}`)
+    .innerJoin(companies, eq(jobs.companyId, companies.id))
+    .where(and(
+      isNull(jobs.closedAt),
+      eq(companies.active, true),
+      sql`jobs_fts MATCH ${matchQuery}`,
+    ))
+    .orderBy(sql`bm25(jobs_fts, 8.0, 1.0)`, jobs.id)
+    .all();
+}
+
+function normalizeBm25(rows: readonly FtsCandidate[]): Map<number, number> {
+  if (rows.length === 0) return new Map();
+  const relevanceByJob = new Map(rows.map((row) => [row.job.id, Math.max(0, -row.bm25)]));
+  const relevances = [...relevanceByJob.values()];
+  const highest = Math.max(...relevances);
+  const lowest = Math.min(...relevances);
+  if (highest === lowest) {
+    return new Map(relevances.length > 0 ? [...relevanceByJob.keys()].map((id) => [id, 1]) : []);
+  }
+  return new Map(
+    [...relevanceByJob].map(([jobId, relevance]) => [
+      jobId,
+      (relevance - lowest) / (highest - lowest),
+    ]),
+  );
 }
 
 function passesStageOne(job: Job, company: { name: string; slug: string; blocked: boolean }, profile: Profile): boolean {
@@ -171,26 +248,32 @@ export function retrieveMatches(
     queryTerms: profile.queryTerms,
   });
   const decisions = latestTriage(database, profile.id);
-  const rows = database.select({ job: jobs, company: companies })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(and(isNull(jobs.closedAt), eq(companies.active, true)))
-    .all();
+  refreshDescriptionFts(database);
+  const matchQuery = ftsMatchQuery(terms);
+  const rows = matchQuery
+    ? ftsCandidates(database, matchQuery)
+    : database.select({ job: jobs, company: companies, bm25: sql<number>`0`.as("bm25_score") })
+      .from(jobs)
+      .innerJoin(companies, eq(jobs.companyId, companies.id))
+      .where(and(isNull(jobs.closedAt), eq(companies.active, true)))
+      .all();
+  const bm25Scores = normalizeBm25(rows);
   const candidates = rows
     .filter(({ job, company }) => passesStageOne(job, company, profile))
     .filter(({ job }) => !["skip", "block_company"].includes(decisions.get(job.id) ?? ""))
     .map(({ job, company }) => {
-      const descriptionFts = stripBoilerplate(job.description);
-      if (job.descriptionFts !== descriptionFts) {
-        database.update(jobs).set({ descriptionFts }).where(eq(jobs.id, job.id)).run();
-        job = { ...job, descriptionFts };
-      }
-      const lexical = lexicalScore({
+      const exactTermScore = lexicalScore({
         title: job.title,
-        description: descriptionFts,
+        description: job.descriptionFts ?? job.description,
         stack: job.stack,
         terms,
       });
+      // BM25 determines the corpus ranking. Keep the existing weighted exact
+      // term score as a small tie-breaker so title aliases and profile weights
+      // retain their current observable effect.
+      const lexical = matchQuery
+        ? bm25Scores.get(job.id)! * 0.8 + exactTermScore * 0.2
+        : exactTermScore;
       const feature = featureScore(job, company, profile, now);
       const retrieval = lexical * 0.6 + feature * 0.4;
       return { job, company, lexical, feature, retrieval };

@@ -4,6 +4,7 @@ import { db } from "./client";
 import { extractionRules } from "./schema";
 import type { CareerPageSelectors, ExtractionRule } from "./schema";
 import type { JobHuntDatabase } from "./types";
+import { parseCareerPageSelectors } from "@/sources/career-page";
 
 export function getExtractionRule(input: { companyId: number; domain: string; database?: JobHuntDatabase }): ExtractionRule | null {
   const database = input.database ?? db;
@@ -21,11 +22,12 @@ export function saveExtractionRule(input: {
 }): ExtractionRule {
   const database = input.database ?? db;
   const now = input.now ?? new Date();
+  const selectors = parseCareerPageSelectors(input.selectors);
   return database.insert(extractionRules).values({
     companyId: input.companyId,
     domain: input.domain,
     domFingerprint: input.domFingerprint,
-    selectors: input.selectors,
+    selectors,
     generatedAt: now,
     generatedBy: input.generatedBy ?? "manual",
     lastOkAt: null,
@@ -34,9 +36,10 @@ export function saveExtractionRule(input: {
     target: [extractionRules.companyId, extractionRules.domain],
     set: {
       domFingerprint: input.domFingerprint,
-      selectors: input.selectors,
+      selectors,
       generatedAt: now,
       generatedBy: input.generatedBy ?? "manual",
+      lastOkAt: null,
       failCount: 0,
     },
   }).returning().get()!;

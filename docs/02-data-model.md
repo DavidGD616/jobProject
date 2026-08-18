@@ -76,6 +76,15 @@ jobs (
   unique (source, source_id)
 )
 
+-- External-content lexical index, not a Drizzle table. `rowid` is jobs.id.
+-- The migration backfills it and triggers mirror jobs writes.
+jobs_fts USING fts5 (
+  title,
+  description_fts,
+  content = 'jobs',
+  content_rowid = 'id'
+)
+
 -- Per-company source request validators and outcomes. The scheduled worker
 -- reads the validator before polling and writes a result after every attempt.
 source_polls (
@@ -111,7 +120,8 @@ matches (
   job_id         integer fk -> jobs
   profile_id     integer fk -> profile
   profile_version integer not null
-  lexical_score  real                      -- BM25, normalized, stage 2a
+  lexical_score  real                      -- normalized title-weighted BM25
+                                           -- + weighted exact-term tie-breaker
   feature_score  real                      -- structured features, stage 2b
   retrieval_score real                     -- weighted combination, stage 2c
   llm_score      integer                   -- 0-100, stage 3. null if not reranked
@@ -171,8 +181,21 @@ resume_variants (
   id            integer pk
   job_id        integer fk -> jobs
   resume_json   json not null
+  cover_letter  text                       -- grounded draft; human-editable
   pdf_path      text
   created_at    timestamp
+)
+
+-- Local worker handoff. The UI queues; only the CLI worker runs LLM/PDF work.
+tailor_requests (
+  id            integer pk
+  job_id        integer fk -> jobs
+  status        text not null              -- queued | running | completed | failed
+  variant_id    integer fk -> resume_variants  -- set when completed
+  error         text                       -- worker failure, if any
+  created_at    timestamp not null
+  started_at    timestamp
+  finished_at   timestamp
 )
 
 -- Append-only audit trail. Never update, only insert.
@@ -237,6 +260,26 @@ Daily LLM cost is therefore ~6 invocations, not 10,000. Never add an "enrich eve
 
 **`description_fts` is separate from `description`.** The indexed copy has benefits, EEO statements, and company boilerplate stripped. BM25 over the raw text rewards whoever wrote the longest culture section. The LLM gets `description`; the index gets `description_fts`.
 
+**`jobs_fts` is the actual FTS5 index.** It is an external-content virtual
+table with `rowid = jobs.id`, not a column or an application-maintained cache.
+Migration `0010` backfills existing rows and installs triggers for `jobs`
+inserts, deletes, and changes to `title`, `description`, or `description_fts`.
+Ingest writes the stripped `description_fts` value whenever it observes a job;
+retrieval only backfills legacy open rows where it is `NULL`. FTS then searches
+`title` and `description_fts` with title-weighted `bm25(jobs_fts, 8.0, 1.0)`.
+It normalizes that result and retains the profile's weighted exact-term score
+only as a small tie-breaker. Do not write directly to `jobs_fts`.
+
+**`tailor_requests` separates the UI from expensive local work.** `/tailor`
+only queues work and displays its status; it can also save a human letter edit
+without triggering the worker. `pnpm tailor -- --next` claims the oldest queued
+request, creates the variant and local HTML export (plus PDF when Chromium is
+available), and records `completed` with `variant_id` or `failed` with an error.
+A queued or running request for the same job is coalesced. The worker selects
+only stored profile facts; its cover letter starts grounded in those facts and
+remains editable in the UI. Saving an edit updates both the variant and any
+attached application. The resume renderer keeps the existing Harvard layout.
+
 ## Dedup strategy
 
 Hardest correctness problem in the project. Three layers, cheapest first:
@@ -260,11 +303,16 @@ jobs (missing_since_at) where open     -- second-absence closure sweep
 companies (ats_type, active) where active  -- the fetch loop's driving query
 companies (blocked) where blocked          -- filter exclusions
 source_polls (source, next_poll_at)    -- source worker due-work lookup
-FTS index on jobs.description_fts + title    -- stage 2a retrieval
+jobs_fts FTS5 (title, description_fts)  -- external-content lexical index; rowid = jobs.id
 matches (retrieval_score desc)         -- ranked list without LLM
 matches (llm_score desc)               -- ranked list with LLM
 llm_runs (task, prompt_hash, provider, model, prompt_version)  -- cache lookup
 applications (next_followup_at) where next_followup_at not null
+tailor_requests (status, created_at)   -- oldest queued local worker request
+tailor_requests (job_id, created_at)   -- per-job queue/status history
 ```
 
-FTS is an FTS5 virtual table (`jobs_fts`) over `title` + `description_fts`, joined on `job_id` and ranked with `bm25()`. It is not a column — keep it in sync on insert and update, or retrieval silently misses new jobs.
+FTS is an FTS5 virtual table (`jobs_fts`) over `title` + `description_fts`,
+joined on `jobs_fts.rowid = jobs.id` and ranked with `bm25()`. Its migration
+triggers keep it in sync on insert, update, and delete, so retrieval cannot
+silently miss a changed job.

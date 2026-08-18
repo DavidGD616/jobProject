@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNull, lt } from "drizzle-orm";
 
 import { contentHash } from "@/ingest/hash";
-import { applyIngestHeuristics } from "@/ingest/heuristics";
+import { applyIngestHeuristics, stripBoilerplate } from "@/ingest/heuristics";
 import type { NormalizedPosting } from "@/sources";
 
 import { jobs } from "./schema";
@@ -112,6 +112,7 @@ function writeObservedPostings(
       title: normalized.title,
       titleNorm: normalized.titleNorm,
       description: normalized.description,
+      descriptionFts: stripBoilerplate(normalized.description),
       location: normalized.location ?? null,
       remoteType: normalized.remoteType ?? null,
       salaryMin: normalized.salaryMin ?? null,

@@ -129,6 +129,11 @@ body {
   color: var(--rust);
 }
 
+.ledger-nav-links a[aria-current="page"] {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
 .ledger-control {
   width: 100%;
   border: 1px solid var(--ledger-border);
@@ -222,6 +227,18 @@ body {
   border-color: #84aa94;
   background: #e3f0e5;
   color: #1f6849;
+}
+
+.ledger-tag-pending {
+  border-color: #c3a85a;
+  background: #fbf1cd;
+  color: #70590f;
+}
+
+.ledger-tag-danger {
+  border-color: #d5a18f;
+  background: #fcefe9;
+  color: #8b321c;
 }
 
 .ledger-field {

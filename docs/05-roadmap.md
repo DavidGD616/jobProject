@@ -57,7 +57,7 @@ Tier B. Depends on Phase 1.5.
 - ✅ LLM query expansion cached per profile version
 - ✅ Ranked review UI, triage buttons, and one-click `block_company`
 - ✅ Few-shot feedback from triage labels
-- ✅ Adzuna query parsing and reverse ATS URL extraction
+- ✅ Profile-driven Adzuna discovery and reverse ATS URL extraction through the shared verifier
 - ✅ Career-page rendering through local Chromium with cached selectors and zero-row failure handling ([ADR-0009](adr/0009-local-browser-automation.md))
 
 *Exit:* daily top-20 is good enough that you stop browsing raw listings. Precision@20 above ~50% by click-through, and known-good jobs reliably survive stage 2.
@@ -112,8 +112,8 @@ Only once there is real data.
 The local UI is available at `/`, `/profile`, `/review`, `/pipeline`, `/tailor`,
 and `/apply`. Worker commands are intentionally separate from request paths:
 
-- `pnpm discover:seed` and `pnpm jobs:fetch` maintain the official ATS ledger.
-- `pnpm career:fetch -- --company-id <id>` replays a cached career-page rule.
+- `pnpm discover:seed` and `pnpm jobs:fetch` maintain the official ATS ledger. Discovery uses HN plus optional profile-driven Adzuna candidates when local credentials are configured.
+- `pnpm career:fetch -- --company-id <id>` is the worker-only career-page path: it replays a cached rule and creates or repairs one when required.
 - `pnpm jobs:rank`, `pnpm jobs:learn`, and `pnpm llm:bench` run ranking work.
 - `pnpm tailor`, `pnpm apply:prepare`, and `pnpm apply:fill` prepare human-reviewed application materials.
 

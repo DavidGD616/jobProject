@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 
-import { db } from "@/db";
+import { db, enqueueTailorRequest, updateResumeVariantCoverLetter } from "@/db";
 import { ensureActiveProfile, saveProfile } from "@/matching";
 import { recordTriage } from "@/matching/triage";
 import { retrieveMatches } from "@/matching/retrieve";
@@ -12,7 +12,6 @@ import {
   saveContact,
   updateApplication,
 } from "@/tracking";
-import { createTailoredVariant } from "@/tailor";
 import { prepareApplication } from "@/apply";
 
 function text(formData: FormData, key: string): string {
@@ -135,13 +134,23 @@ export async function addContactAction(formData: FormData): Promise<void> {
   redirect("/pipeline?saved=1");
 }
 
-/** Deterministic, request-safe tailoring. LLM suggestions run via pnpm tailor. */
-export async function createTailorVariantAction(formData: FormData): Promise<void> {
+/** Queue work for the local tailor CLI; request handlers never launch Chromium. */
+export async function queueTailorVariantAction(formData: FormData): Promise<void> {
   const jobId = Number(text(formData, "job_id"));
   if (!Number.isInteger(jobId)) redirect("/tailor?error=Invalid+job");
-  const profile = ensureActiveProfile(db);
-  await createTailoredVariant({ jobId, profile, database: db, allowLlm: false });
-  redirect("/tailor?saved=1");
+  enqueueTailorRequest({ jobId, database: db });
+  redirect("/tailor?queued=1");
+}
+
+export async function updateCoverLetterAction(formData: FormData): Promise<void> {
+  const variantId = Number(text(formData, "variant_id"));
+  if (!Number.isInteger(variantId)) redirect("/tailor?error=Invalid+resume+variant");
+  updateResumeVariantCoverLetter({
+    variantId,
+    coverLetter: text(formData, "cover_letter"),
+    database: db,
+  });
+  redirect("/tailor?letter_saved=1");
 }
 
 export async function prepareApplicationAction(formData: FormData): Promise<void> {

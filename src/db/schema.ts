@@ -318,6 +318,28 @@ export const resumeVariants = sqliteTable(
   (table) => [index("resume_variants_job_idx").on(table.jobId, table.createdAt)],
 );
 
+/**
+ * A local worker queue for tailoring. The UI may enqueue a request, but only
+ * the CLI worker performs LLM work or launches Chromium to render a PDF.
+ */
+export const tailorRequests = sqliteTable(
+  "tailor_requests",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    jobId: integer("job_id").notNull().references(() => jobs.id),
+    status: text("status").notNull().default("queued"),
+    variantId: integer("variant_id").references(() => resumeVariants.id),
+    error: text("error"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    startedAt: integer("started_at", { mode: "timestamp_ms" }),
+    finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("tailor_requests_status_created_idx").on(table.status, table.createdAt),
+    index("tailor_requests_job_created_idx").on(table.jobId, table.createdAt),
+  ],
+);
+
 export const applications = sqliteTable(
   "applications",
   {
@@ -414,6 +436,8 @@ export type Triage = typeof triage.$inferSelect;
 export type NewTriage = typeof triage.$inferInsert;
 export type ResumeVariant = typeof resumeVariants.$inferSelect;
 export type NewResumeVariant = typeof resumeVariants.$inferInsert;
+export type TailorRequest = typeof tailorRequests.$inferSelect;
+export type NewTailorRequest = typeof tailorRequests.$inferInsert;
 export type Application = typeof applications.$inferSelect;
 export type NewApplication = typeof applications.$inferInsert;
 export type Event = typeof events.$inferSelect;

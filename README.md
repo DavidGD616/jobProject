@@ -2,7 +2,8 @@
 
 Local-only job discovery and application workspace. The complete Phase 1–6
 workflow is implemented: discovered official ATS boards, profile-aware ranking,
-tracking, grounded tailoring, human-reviewed form filling, and outcome learning.
+tracking, grounded tailoring with human-editable letters, human-reviewed form
+filling, and outcome learning.
 
 ## Run locally
 
@@ -49,6 +50,13 @@ pnpm discover:seed
 pnpm jobs:fetch
 ```
 
+`pnpm discover:seed` always uses the automatic HN source. To also use the
+optional Adzuna discovery scout, set `ADZUNA_APP_ID` and `ADZUNA_API_KEY` in
+the local environment (with `ADZUNA_COUNTRY` defaulting to `us`). It derives
+the role and location from the saved profile; it never asks for company names.
+Without both credentials, the run reports that Adzuna was skipped and continues
+with the independent HN source.
+
 `pnpm jobs:fetch` only polls sources that are due, active, and not blocked. For
 a local long-running worker, use `pnpm jobs:watch`; it scans for due work every
 minute and remains bound to local SQLite state.
@@ -63,6 +71,10 @@ pnpm jobs:rank -- --limit 20 --rerank
 The optional rerank and query-expansion calls use installed `claude`/`codex`
 CLIs, never a hosted API. Results are cached locally in `llm_runs`.
 
+Initial retrieval is local FTS5/BM25 over each job's title and
+boilerplate-stripped description, then combines that lexical signal with the
+structured preferences. There are no embeddings or hosted search service.
+
 ## Career pages, tailoring, and apply
 
 Companies with a cached career-page extraction rule can be rendered in local
@@ -76,14 +88,32 @@ Use `--html-file <path>` for a saved rendered snapshot or `--http` for a
 static-page fallback. A zero-row extraction is recorded as a rule failure and
 does not close jobs.
 
-Track a role from its detail page or the pipeline, then create grounded
-variants and a review-only ATS plan:
+Track a role from its detail page or the pipeline. In `/tailor`, queue a
+grounded variant, then let the local worker claim the oldest queued request:
+
+```bash
+pnpm tailor -- --next
+```
+
+For a one-off terminal run that does not use the queue:
 
 ```bash
 pnpm tailor -- --job-id <id>
+```
+
+After a variant is ready, prepare and fill its review-only ATS plan:
+
+```bash
 pnpm apply:prepare -- --application-id <id>
 pnpm apply:fill -- --run-id <id>
 ```
+
+`--next` performs the LLM selection (when available) and attempts local
+Chromium PDF rendering outside the UI request, then records the request as
+completed or failed. The UI only queues work, shows its status, serves finished
+exports, and lets you review or edit the cover letter. Tailoring selects and
+reorders facts from the stored profile; it does not invent resume content. The
+existing Harvard resume layout is preserved.
 
 `apply:fill` opens local Chromium and fills only declared fields. It has no
 submit operation; custom questions and the final Submit click always remain

@@ -11,14 +11,14 @@ import {
   ingestObservedPostings,
   markMissingSourceJobs,
 } from "@/db/jobs";
-import { applicationRuns, applications, companies, contacts, events, extractionRules, jobs, llmRuns, matches, profiles, rankingFeedback, resumeVariants, sourcePolls, triage } from "@/db/schema";
+import { applicationRuns, applications, companies, contacts, events, extractionRules, jobs, llmRuns, matches, profiles, rankingFeedback, resumeVariants, sourcePolls, tailorRequests, triage } from "@/db/schema";
 import { applyIngestHeuristics, contentHash } from "@/ingest";
 import type { NormalizedPosting } from "@/sources";
 
 function createTestDatabase() {
   const sqlite = new Database(":memory:");
   const db = drizzle(sqlite, {
-    schema: { applicationRuns, applications, companies, contacts, events, extractionRules, jobs, llmRuns, matches, profiles, rankingFeedback, resumeVariants, sourcePolls, triage },
+    schema: { applicationRuns, applications, companies, contacts, events, extractionRules, jobs, llmRuns, matches, profiles, rankingFeedback, resumeVariants, sourcePolls, tailorRequests, triage },
   });
   migrate(db, { migrationsFolder: resolve(process.cwd(), "drizzle") });
   return { db, sqlite };
@@ -129,6 +129,7 @@ test("ingest upserts observations, links content duplicates, and closes only aft
     assert.equal(stored[0]!.seniority, "senior");
     assert.equal(stored[0]!.remoteType, "remote");
     assert.equal(stored[0]!.salaryMin, 120_000);
+    assert.equal(stored[0]!.descriptionFts, productRole.description);
     assert.equal(stored[1]!.canonicalId, stored[0]!.id);
 
     const firstMissing = await markMissingSourceJobs(db, {

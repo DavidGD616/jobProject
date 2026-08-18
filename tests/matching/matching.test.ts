@@ -6,7 +6,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 
-import { applicationRuns, applications, companies, contacts, events, extractionRules, jobs, llmRuns, matches, profiles, rankingFeedback, resumeVariants, sourcePolls, triage } from "@/db/schema";
+import { applicationRuns, applications, companies, contacts, events, extractionRules, jobs, llmRuns, matches, profiles, rankingFeedback, resumeVariants, sourcePolls, tailorRequests, triage } from "@/db/schema";
 import {
   ensureActiveProfile,
   recordTriage,
@@ -19,7 +19,7 @@ import type { LlmProvider, ProviderResult } from "@/llm";
 
 function createTestDatabase() {
   const sqlite = new Database(":memory:");
-  const db = drizzle(sqlite, { schema: { applicationRuns, applications, companies, contacts, events, extractionRules, jobs, llmRuns, matches, profiles, rankingFeedback, resumeVariants, sourcePolls, triage } });
+  const db = drizzle(sqlite, { schema: { applicationRuns, applications, companies, contacts, events, extractionRules, jobs, llmRuns, matches, profiles, rankingFeedback, resumeVariants, sourcePolls, tailorRequests, triage } });
   migrate(db, { migrationsFolder: resolve(process.cwd(), "drizzle") });
   return { db, sqlite };
 }
@@ -87,6 +87,45 @@ test("profile versions invalidate retrieval rows and lexical matching is explain
       skills: ["office"], titleAliases: [], skillAliases: {}, preferences: {},
     }, db, new Date(now.valueOf() + 1_000));
     assert.equal(changed.version, profile.version + 1);
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("FTS5 indexes stripped job text and BM25 gives title matches precedence", () => {
+  const { db, sqlite } = createTestDatabase();
+  try {
+    const now = new Date("2026-08-17T12:00:00.000Z");
+    const company = db.insert(companies).values({
+      name: "Acme", slug: "acme", discoveredVia: "test", discoveredAt: now, createdAt: now,
+    }).returning().get()!;
+    const [titleMatch, bodyMatch] = db.insert(jobs).values([
+      {
+        companyId: company.id, source: "test", sourceId: "title-match", url: "https://example.com/title",
+        title: "TypeScript Engineer", titleNorm: "typescript engineer",
+        description: "Build reliable services.", firstSeenAt: now, lastSeenAt: now, postedAt: now, contentHash: "title-match",
+      },
+      {
+        companyId: company.id, source: "test", sourceId: "body-match", url: "https://example.com/body",
+        title: "Platform Engineer", titleNorm: "platform engineer",
+        description: "Build reliable TypeScript services.\n\nEqual opportunity employer.", firstSeenAt: now, lastSeenAt: now, postedAt: now, contentHash: "body-match",
+      },
+    ]).returning().all();
+    const profile = saveProfile({
+      resumeJson: { experience: [], education: [], projects: [] },
+      skills: ["typescript"], titleAliases: [], skillAliases: {}, preferences: {},
+    }, db, now);
+
+    const ranked = retrieveMatches(profile, { database: db, now, limit: 10 });
+    assert.deepEqual(ranked.map((match) => match.job.id), [titleMatch!.id, bodyMatch!.id]);
+    assert.ok(ranked[0]!.lexicalScore > ranked[1]!.lexicalScore);
+
+    const ftsDefinition = sqlite.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'jobs_fts'").get() as { sql: string } | undefined;
+    assert.match(ftsDefinition?.sql ?? "", /fts5/i);
+    const indexed = sqlite.prepare("SELECT rowid FROM jobs_fts WHERE jobs_fts MATCH ? ORDER BY bm25(jobs_fts, 8.0, 1.0)").all("typescript") as Array<{ rowid: number }>;
+    assert.deepEqual(indexed.map((row) => row.rowid), [titleMatch!.id, bodyMatch!.id]);
+    const boilerplateHits = sqlite.prepare("SELECT rowid FROM jobs_fts WHERE jobs_fts MATCH ?").all("opportunity") as Array<{ rowid: number }>;
+    assert.deepEqual(boilerplateHits, []);
   } finally {
     sqlite.close();
   }

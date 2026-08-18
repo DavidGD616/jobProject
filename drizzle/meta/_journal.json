@@ -64,6 +64,20 @@
       "when": 1786998474768,
       "tag": "0008_loose_the_professor",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1787021315385,
+      "tag": "0009_lush_loners",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1787021588960,
+      "tag": "0010_jobs_fts",
+      "breakpoints": true
     }
   ]
 }

@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { db } from "@/db";
+import { db, displayCompanyName } from "@/db";
 import { applications, companies, jobs, resumeVariants } from "@/db/schema";
 import type { Profile, ResumeProfileJson } from "@/db/schema";
 import type { JobHuntDatabase } from "@/db/types";
@@ -16,9 +16,7 @@ const tailorResponseSchema = z.object({
   selected_bullets: z.array(z.object({
     experience_index: z.number().int().min(0),
     bullet_indices: z.array(z.number().int().min(0)),
-    rewrite_suggestions: z.array(z.string()).default([]),
   })).default([]),
-  cover_letter: z.string().min(1),
 });
 
 export interface TailoredVariant {
@@ -51,10 +49,6 @@ function relevantSkills(skills: readonly string[], jobTerms: Set<string>): strin
 function portfolioFromSummary(resume: ResumeProfileJson): string | undefined {
   if (resume.portfolioUrl) return resume.portfolioUrl;
   return resume.summary?.match(/https?:\/\/[^\s)]+/i)?.[0];
-}
-
-function displayCompanyName(name: string): string {
-  return name.replace(/\s*\(https?:\/\/[^)]+\)\s*$/i, "").trim() || name;
 }
 
 function deterministicResume(resume: ResumeProfileJson, description: string): ResumeProfileJson {
@@ -95,7 +89,7 @@ function printableResume(resume: ResumeProfileJson, profile: Profile, descriptio
 function llmPrompt(profile: Profile, companyName: string, jobTitle: string, description: string): string {
   return [
     "Tailor a resume draft using only the supplied candidate facts. Do not invent employers, metrics, dates, technologies, or outcomes.",
-    "Return JSON with selected_bullets (valid source indices plus optional rewrite suggestions that remain faithful) and a concise cover_letter draft.",
+    "Return JSON with selected_bullets only. Each selection must contain valid source experience and bullet indices; never return rewritten prose.",
     `Candidate: ${JSON.stringify(profile.resumeJson)}`,
     `Skills: ${JSON.stringify(profile.skills)}`,
     `Target company: ${companyName}; role: ${jobTitle}`,
@@ -132,20 +126,19 @@ export async function createTailoredVariant(input: {
   if (!row) throw new Error(`Job ${input.jobId} not found`);
   const companyName = displayCompanyName(row.company.name);
   let resume = deterministicResume(input.profile.resumeJson, row.job.description);
-  let coverLetter = groundedCoverLetter(input.profile, companyName, row.job.title);
+  const coverLetter = groundedCoverLetter(input.profile, companyName, row.job.title);
   let llmUsed = false;
   if (input.allowLlm) {
     const result = await runStructured({
       task: "tailor",
       prompt: llmPrompt(input.profile, companyName, row.job.title, row.job.description),
-      promptVersion: "tailor-v1",
+      promptVersion: "tailor-v2",
       schema: tailorResponseSchema,
       database,
       now: () => now,
     });
     if (result.value) {
       resume = applySelection(resume, result.value.selected_bullets);
-      coverLetter = result.value.cover_letter;
       llmUsed = true;
     }
   }
