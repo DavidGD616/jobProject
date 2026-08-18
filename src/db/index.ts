@@ -2,7 +2,14 @@ export { db, sqlite } from "./client";
 export * from "./schema";
 export { displayCompanyName } from "./company-name";
 export { listOpenJobs, parseJobListFilters } from "./job-list";
-export type { DateWindow, JobListData, JobListFilters, JobListItem } from "./job-list";
+export type {
+  DateWindow,
+  JobListData,
+  JobListFilters,
+  JobListItem,
+  JobListScope,
+  ListOpenJobsOptions,
+} from "./job-list";
 export {
   ingestObservedPostings,
   ingestSourceSnapshot,

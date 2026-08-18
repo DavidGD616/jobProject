@@ -26,6 +26,8 @@ export interface ProviderRunOptions {
   model?: string;
   timeoutMs?: number;
   signal?: AbortSignal;
+  /** Optional provider-native JSON Schema for a structured final response. */
+  outputSchema?: Record<string, unknown>;
 }
 
 export interface ProviderResult {
@@ -50,6 +52,8 @@ export interface StructuredRunOptions<T> {
   prompt: string;
   promptVersion: string;
   schema: ZodType<T>;
+  /** Passed through when a provider can enforce a strict object-shaped response. */
+  outputSchema?: Record<string, unknown>;
   providers?: readonly LlmProvider[];
   model?: string;
   timeoutMs?: number;

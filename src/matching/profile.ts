@@ -114,6 +114,18 @@ function insertProfile(database: JobHuntDatabase, input: ProfileInput, now: Date
   return database.insert(profiles).values(values).returning().get()!;
 }
 
+function searchInputsChanged(current: Profile, next: ProfileInput): boolean {
+  return JSON.stringify({
+    skills: current.skills,
+    titleAliases: current.titleAliases,
+    skillAliases: current.skillAliases,
+  }) !== JSON.stringify({
+    skills: next.skills,
+    titleAliases: next.titleAliases,
+    skillAliases: next.skillAliases,
+  });
+}
+
 export function getActiveProfile(
   database: JobHuntDatabase = db,
 ): Profile | null {
@@ -135,6 +147,11 @@ export function saveProfile(
   const current = getActiveProfile(database);
   const normalized = normalizeProfileInput(input);
   if (!current) return insertProfile(database, normalized, now);
+  // Query expansion is derived from the profile's search inputs. Retaining it
+  // after those inputs change quietly broadens retrieval with stale terms.
+  const queryTerms = searchInputsChanged(current, normalized)
+    ? {}
+    : normalized.queryTerms ?? {};
   return database
     .update(profiles)
     .set({
@@ -143,7 +160,7 @@ export function saveProfile(
       skills: normalized.skills,
       titleAliases: normalized.titleAliases,
       skillAliases: normalized.skillAliases,
-      queryTerms: normalized.queryTerms ?? {},
+      queryTerms,
       preferences: normalized.preferences,
       updatedAt: now,
     })

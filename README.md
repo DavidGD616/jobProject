@@ -75,6 +75,11 @@ Initial retrieval is local FTS5/BM25 over each job's title and
 boilerplate-stripped description, then combines that lexical signal with the
 structured preferences. There are no embeddings or hosted search service.
 
+Explore defaults to a broad, profile-guided candidate pool rather than every
+role in the local official-board ledger. Use its **All official roles** switch
+only when you need to inspect that underlying inventory; Matches remains the
+smaller, ranked shortlist.
+
 ## Career pages, tailoring, and apply
 
 Companies with a cached career-page extraction rule can be rendered in local

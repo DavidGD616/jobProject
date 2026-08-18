@@ -7,7 +7,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 
 import { applicationRuns, applications, companies, contacts, events, extractionRules, jobs, llmRuns, matches, profiles, rankingFeedback, resumeVariants, sourcePolls, tailorRequests, triage } from "@/db/schema";
-import { ensureActiveProfile, expandProfileQuery, fewShotExamples } from "@/matching";
+import { ensureActiveProfile, expandProfileQuery, fewShotExamples, saveProfile } from "@/matching";
 import type { LlmProvider, ProviderResult } from "@/llm";
 
 function createTestDatabase() {
@@ -32,6 +32,34 @@ test("query expansion is cached by profile version and human examples are availa
     };
     const expanded = await expandProfileQuery({ profile, database: db, allowLlm: true, providers: [provider], now });
     assert.equal(expanded.queryTerms["distributed systems"], 3);
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("changing profile search inputs clears stale expanded terms", () => {
+  const { db, sqlite } = createTestDatabase();
+  try {
+    const now = new Date("2026-08-17T12:00:00.000Z");
+    const original = saveProfile({
+      resumeJson: { experience: [], education: [], projects: [] },
+      skills: ["typescript"],
+      titleAliases: ["software engineer"],
+      skillAliases: { typescript: ["node.js"] },
+      preferences: {},
+      queryTerms: { "distributed systems": 3 },
+    }, db, now);
+    assert.equal(original.queryTerms["distributed systems"], 3);
+
+    const changed = saveProfile({
+      resumeJson: { experience: [], education: [], projects: [] },
+      skills: ["react"],
+      titleAliases: ["frontend engineer"],
+      skillAliases: { react: ["react.js"] },
+      preferences: {},
+      queryTerms: original.queryTerms,
+    }, db, new Date(now.valueOf() + 1_000));
+    assert.deepEqual(changed.queryTerms, {});
   } finally {
     sqlite.close();
   }

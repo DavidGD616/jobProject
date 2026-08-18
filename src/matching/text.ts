@@ -38,8 +38,10 @@ export function profileTerms(input: {
   return [...weights.entries()].map(([term, weight]) => ({ term, weight }));
 }
 
-function includesTerm(haystack: string, term: string): boolean {
-  return tokenize(term).every((token) => haystack.includes(token));
+/** Whether every meaningful token in a saved profile term appears in text. */
+export function matchesProfileTerm(haystack: string, term: string): boolean {
+  const tokens = tokenize(term);
+  return tokens.length > 0 && tokens.every((token) => haystack.includes(token));
 }
 
 export function lexicalScore(input: {
@@ -55,8 +57,8 @@ export function lexicalScore(input: {
   let possible = 0;
   for (const item of input.terms) {
     possible += item.weight;
-    if (includesTerm(title, item.term)) earned += item.weight * 1.8;
-    else if (includesTerm(body, item.term)) earned += item.weight;
+    if (matchesProfileTerm(title, item.term)) earned += item.weight * 1.8;
+    else if (matchesProfileTerm(body, item.term)) earned += item.weight;
   }
   return Math.max(0, Math.min(1, earned / Math.max(1, possible * 1.8)));
 }

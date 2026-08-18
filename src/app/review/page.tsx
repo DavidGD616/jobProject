@@ -39,7 +39,7 @@ function scoreSource(learned: number | null, score: number | null): string {
 
 export default async function ReviewPage({ searchParams }: ReviewPageProps) {
   const profile = ensureActiveProfile();
-  const matches = listRankedMatches(profile.id, { limit: 100 });
+  const matches = listRankedMatches(profile, { limit: 100 });
   const query = await searchParams;
 
   return (

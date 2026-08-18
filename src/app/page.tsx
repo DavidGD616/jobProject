@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { displayCompanyName } from "@/db";
 import { listOpenJobs, parseJobListFilters } from "@/db/job-list";
+import { getActiveProfile } from "@/matching";
 
 import { CompanyPicker } from "./company-picker";
 import { AppNav } from "./nav";
@@ -13,6 +14,7 @@ type PageProps = {
     company?: string | string[];
     title?: string | string[];
     date?: string | string[];
+    scope?: string | string[];
   }>;
 };
 
@@ -72,9 +74,15 @@ function filterSummary(input: {
 
 export default async function Home({ searchParams }: PageProps) {
   const filters = parseJobListFilters(await searchParams);
-  const data = listOpenJobs(filters);
+  // Explore is a read-only view. A profile is created only when the user saves
+  // it from the Profile page or a worker explicitly needs one.
+  const profile = getActiveProfile();
+  const hasProfile = profile !== null;
+  const data = listOpenJobs(filters, { profile });
   const visibleCount = data.jobs.length;
   const hasFilters = Boolean(filters.company || filters.title || filters.dateWindow !== "all");
+  const profileScope = filters.scope === "profile";
+  const clearFiltersHref = profileScope ? "/" : "/?scope=all";
   const companyOptions = data.companies.map((company) => ({
     ...company,
     name: displayCompanyName(company.name),
@@ -85,7 +93,10 @@ export default async function Home({ searchParams }: PageProps) {
     title: filters.title,
     dateWindow: filters.dateWindow,
   });
-  const newestListing = data.jobs[0]?.postedAt ?? data.jobs[0]?.firstSeenAt ?? null;
+  const newestListing = data.jobs.reduce<Date | null>((latest, job) => {
+    const date = job.postedAt ?? job.firstSeenAt;
+    return !latest || date > latest ? date : latest;
+  }, null);
 
   return (
     <main className="min-h-screen px-4 py-4 sm:px-7 sm:py-7 lg:px-10 lg:py-9" id="main-content">
@@ -101,13 +112,17 @@ export default async function Home({ searchParams }: PageProps) {
                     <span aria-hidden="true" className="size-2 rounded-full bg-current" />
                     Open roles
                   </span>
-                  <span>Official company boards, kept locally</span>
+                  <span>{profileScope ? "Broad roles shaped by your profile" : "Official company boards, kept locally"}</span>
                 </div>
                 <h1 className="mt-5 max-w-3xl font-serif text-4xl leading-[0.98] tracking-[-0.045em] text-[var(--ink)] sm:text-5xl lg:text-6xl">
                   Find the next role worth your time.
                 </h1>
                 <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--ink-soft)] sm:text-lg">
-                  Start with fresh openings, then use Matches to compare promising roles with your profile before you track, tailor, and apply.
+                  {profileScope
+                    ? hasProfile
+                      ? "Start with a broad local candidate pool based on your titles, skills, and preferences. Matches then ranks the strongest fits."
+                      : "Add a profile to turn the local job inventory into a focused candidate pool."
+                    : "Browse the complete local inventory of official openings, then use Matches to compare promising roles with your profile."}
                 </p>
                 <div className="mt-6 flex flex-wrap gap-3">
                   <a
@@ -118,27 +133,27 @@ export default async function Home({ searchParams }: PageProps) {
                   </a>
                   <Link
                     className="inline-flex items-center gap-2 rounded-xl border border-[color:color-mix(in_srgb,var(--ink)_14%,transparent)] bg-[var(--paper)] px-4 py-3 text-sm font-semibold text-[var(--ink)] transition hover:border-[var(--rust)] hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]"
-                    href="/review"
+                    href={hasProfile ? "/review" : "/profile"}
                   >
-                    See your matches <span aria-hidden="true">→</span>
+                    {hasProfile ? "See your matches" : "Set up your profile"} <span aria-hidden="true">→</span>
                   </Link>
                 </div>
               </div>
 
               <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-2">
                 <div className="rounded-2xl bg-[color:color-mix(in_srgb,var(--ink)_5%,transparent)] p-4 sm:p-5">
-                  <dt className="text-sm text-[var(--muted)]">Open now</dt>
+                  <dt className="text-sm text-[var(--muted)]">{profileScope ? "Profile candidates" : "Open now"}</dt>
                   <dd className="mt-2 font-serif text-3xl tracking-[-0.04em] text-[var(--ink)] sm:text-4xl">
                     {data.total.toLocaleString()}
                   </dd>
                   <p className="mt-1 text-xs leading-4 text-[var(--muted)]">roles in this view</p>
                 </div>
                 <div className="rounded-2xl bg-[color:color-mix(in_srgb,var(--ink)_5%,transparent)] p-4 sm:p-5">
-                  <dt className="text-sm text-[var(--muted)]">Companies</dt>
+                  <dt className="text-sm text-[var(--muted)]">{profileScope ? "Matching boards" : "Companies"}</dt>
                   <dd className="mt-2 font-serif text-3xl tracking-[-0.04em] text-[var(--ink)] sm:text-4xl">
                     {data.openCompanies.toLocaleString()}
                   </dd>
-                  <p className="mt-1 text-xs leading-4 text-[var(--muted)]">live boards in the workspace</p>
+                  <p className="mt-1 text-xs leading-4 text-[var(--muted)]">{profileScope ? "boards in this candidate pool" : "live boards in the workspace"}</p>
                 </div>
                 <div className="col-span-2 rounded-2xl border border-[color:color-mix(in_srgb,var(--rust)_22%,transparent)] bg-[color:color-mix(in_srgb,var(--rust)_8%,transparent)] p-4 sm:col-span-3 sm:p-5 lg:col-span-2">
                   <dt className="text-sm font-medium text-[var(--ink-soft)]">Latest listing in this view</dt>
@@ -146,7 +161,11 @@ export default async function Home({ searchParams }: PageProps) {
                     {newestListing ? formatDate(newestListing) : "Waiting for the first role"}
                   </dd>
                   <p className="mt-1 text-xs leading-4 text-[var(--muted)]">
-                    {newestListing ? "Sorted by the newest posted or first-seen role." : "New official listings will appear here as they become available."}
+                    {newestListing
+                      ? profileScope
+                        ? "Candidates are ordered by profile relevance; this shows the newest one in the pool."
+                        : "Sorted by the newest posted or first-seen role."
+                      : "New official listings will appear here as they become available."}
                   </p>
                 </div>
               </dl>
@@ -157,26 +176,47 @@ export default async function Home({ searchParams }: PageProps) {
             aria-labelledby="filters-heading"
             className="rounded-[1.5rem] border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[var(--paper)] p-5 shadow-sm sm:p-6"
           >
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
               <div>
                 <h2 className="text-xl font-semibold tracking-[-0.025em] text-[var(--ink)]" id="filters-heading">
-                  Find roles to explore
+                  {profileScope ? "Explore your broad candidate pool" : "Explore all official roles"}
                 </h2>
                 <p className="mt-1 text-sm leading-5 text-[var(--muted)]">
                   Search by company, title, or when the role was posted. Your view stays in the URL so you can return to it.
                 </p>
               </div>
-              {hasFilters ? (
+              <div className="flex flex-wrap items-center gap-3 text-sm font-semibold">
                 <Link
-                  className="w-fit text-sm font-semibold text-[var(--rust)] underline decoration-[var(--rust)]/40 underline-offset-4 transition hover:decoration-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]"
+                  aria-current={profileScope ? "page" : undefined}
+                  className={profileScope
+                    ? "text-[var(--rust)] underline decoration-[var(--rust)]/40 underline-offset-4"
+                    : "text-[var(--ink-soft)] transition hover:text-[var(--rust)]"}
                   href="/"
                 >
-                  Clear all filters
+                  Relevant to my profile
                 </Link>
-              ) : null}
+                <Link
+                  aria-current={!profileScope ? "page" : undefined}
+                  className={!profileScope
+                    ? "text-[var(--rust)] underline decoration-[var(--rust)]/40 underline-offset-4"
+                    : "text-[var(--ink-soft)] transition hover:text-[var(--rust)]"}
+                  href="/?scope=all"
+                >
+                  All official roles
+                </Link>
+                {hasFilters ? (
+                  <Link
+                    className="text-[var(--rust)] underline decoration-[var(--rust)]/40 underline-offset-4 transition hover:decoration-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]"
+                    href={clearFiltersHref}
+                  >
+                    Clear filters
+                  </Link>
+                ) : null}
+              </div>
             </div>
 
             <form aria-label="Filter open roles" className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_12rem_auto] lg:items-end" method="get">
+              <input name="scope" type="hidden" value={filters.scope} />
               <label className="grid gap-2 text-sm font-semibold text-[var(--ink)]">
                 Company
                 <CompanyPicker companies={companyOptions} defaultSlug={filters.company} />
@@ -241,7 +281,9 @@ export default async function Home({ searchParams }: PageProps) {
                 </div>
                 <p aria-live="polite" className="text-sm leading-5 text-[var(--muted)]">
                   {data.total > visibleCount
-                    ? `Showing the newest ${visibleCount.toLocaleString()} of ${data.total.toLocaleString()}.`
+                    ? profileScope
+                      ? `Showing the strongest ${visibleCount.toLocaleString()} of ${data.total.toLocaleString()}.`
+                      : `Showing the newest ${visibleCount.toLocaleString()} of ${data.total.toLocaleString()}.`
                     : `${visibleCount.toLocaleString()} role${visibleCount === 1 ? "" : "s"} loaded.`}
                 </p>
               </div>
@@ -317,19 +359,31 @@ export default async function Home({ searchParams }: PageProps) {
                 <div className="grid min-h-[380px] place-items-center px-6 py-14 text-center sm:px-10">
                   <div className="max-w-md">
                     <p className="text-sm font-semibold text-[var(--rust)]">
-                      {hasFilters ? "Try a broader search" : "Your workspace is ready for its first roles"}
+                      {hasFilters ? "Try a broader search" : profileScope ? hasProfile ? "No profile-guided roles yet" : "Start with your profile" : "Your workspace is ready for its first roles"}
                     </p>
                     <h3 className="mt-3 font-serif text-3xl tracking-[-0.04em] text-[var(--ink)]">
-                      {hasFilters ? "No opening matches these filters." : "No open roles have been added yet."}
+                      {hasFilters
+                        ? "No opening matches these filters."
+                        : profileScope
+                          ? hasProfile ? "No current openings match your saved profile yet." : "Create a profile to guide this view."
+                          : "No open roles have been added yet."}
                     </h3>
                     <p className="mt-4 text-sm leading-6 text-[var(--muted)]">
                       {hasFilters
                         ? "Clear a filter or widen the date range to look across more company boards."
-                        : "Official roles will appear here as they become available. Once they do, this is where you can explore them."}
+                        : profileScope
+                          ? hasProfile
+                            ? "Keep your profile specific and refresh Matches after the job worker runs. The full official inventory remains available from the switch above."
+                            : "Your profile supplies the titles, skills, and preferences for this broad candidate pool."
+                          : "Official roles will appear here as they become available. Once they do, this is where you can explore them."}
                     </p>
                     {hasFilters ? (
-                      <Link className="mt-6 inline-flex rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-[var(--paper)] transition hover:bg-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]" href="/">
+                      <Link className="mt-6 inline-flex rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-[var(--paper)] transition hover:bg-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]" href={clearFiltersHref}>
                         Clear filters
+                      </Link>
+                    ) : profileScope && !hasProfile ? (
+                      <Link className="mt-6 inline-flex rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-[var(--paper)] transition hover:bg-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]" href="/profile">
+                        Set up your profile
                       </Link>
                     ) : null}
                   </div>
@@ -344,20 +398,28 @@ export default async function Home({ searchParams }: PageProps) {
                   See a role that stands out?
                 </h2>
                 <p className="mt-3 text-sm leading-6 text-[var(--ink-soft)]">
-                  Explore the role details first. When you are ready to compare it with your profile, open Matches.
+                  {hasProfile
+                    ? "Explore the role details first. When you are ready to compare it with your profile, open Matches."
+                    : "Set up a profile first, then Explore can focus on the roles that fit you."}
                 </p>
-                <Link className="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-[var(--rust)] px-4 py-3 text-sm font-semibold text-[var(--paper)] shadow-sm transition hover:-translate-y-px hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]" href="/review">
-                  Open Matches <span aria-hidden="true" className="ml-2">→</span>
+                <Link className="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-[var(--rust)] px-4 py-3 text-sm font-semibold text-[var(--paper)] shadow-sm transition hover:-translate-y-px hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]" href={hasProfile ? "/review" : "/profile"}>
+                  {hasProfile ? "Open Matches" : "Set up your profile"} <span aria-hidden="true" className="ml-2">→</span>
                 </Link>
               </section>
 
               <section className="rounded-[1.5rem] border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[var(--paper)] p-5 shadow-sm">
                 <h2 className="text-base font-semibold text-[var(--ink)]">What you are looking at</h2>
                 <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                  {data.openCompanies.toLocaleString()} discovered company boards. These are currently open, canonical roles from official sources—not copied social listings.
+                  {profileScope
+                    ? hasProfile
+                      ? `${data.openCompanies.toLocaleString()} official boards contribute profile-guided candidates. The full source snapshots stay local so future profile changes can find adjacent roles.`
+                      : "Save a profile to use titles, skills, and preferences to focus this view."
+                    : `${data.openCompanies.toLocaleString()} discovered company boards. These are currently open, canonical roles from official sources—not copied social listings.`}
                 </p>
                 <p className="mt-4 border-t border-[color:color-mix(in_srgb,var(--ink)_10%,transparent)] pt-4 text-sm leading-6 text-[var(--ink-soft)]">
-                  The newest 100 roles stay here for a fast first pass. Use the filters above to make the list yours.
+                  {profileScope
+                    ? "The strongest 300 candidates are retained for fast browsing, with the first 100 shown here. Use Matches for the final ranking."
+                    : "The newest 100 roles stay here for a fast first pass. Use the filters above to make the list yours."}
                 </p>
               </section>
             </aside>

@@ -1,7 +1,7 @@
 # 04 — Matching
 
 **Status:** Current · **Last updated:** 2026-08-17
-**Constrained by:** [ADR-0007](adr/0007-llm-via-cli-subprocess.md) (LLM via CLI) · [ADR-0008](adr/0008-no-embeddings-lexical-retrieval.md) (no embeddings)
+**Constrained by:** [ADR-0007](adr/0007-llm-via-cli-subprocess.md) (LLM via CLI) · [ADR-0008](adr/0008-no-embeddings-lexical-retrieval.md) (no embeddings) · [ADR-0011](adr/0011-profile-guided-explore-candidates.md) (profile-guided Explore)
 
 Goal: turn a few thousand open jobs into a daily list of ~20 worth reading, each with a reason.
 
@@ -23,6 +23,22 @@ Three stages, each cutting the set so the expensive stage runs on few items. The
 
 Stages 1 and 2 need no LLM at all. If every CLI is unavailable, the list still ranks — worse, but usable.
 
+## Explore — broad profile-guided candidates
+
+Explore is the step before the ranking funnel, not a dump of every official
+posting in the local ledger. It performs a read-only FTS query from the current
+profile's skills, title aliases, aliases, and cached query terms, scans the
+strongest 1,500 lexical hits, and shows the best 300 broad candidates. Its
+score weights title-aware BM25, exact profile overlap, title-alias hits,
+location affinity, and preferred-company affinity.
+
+This keeps useful adjacent roles visible even when they are not a final Match.
+Known location or work-setting mismatches rank lower in Explore rather than
+being discarded; explicit exclusions, salary floors, and prior skip/block
+decisions still remove a role. The official source snapshot remains complete
+in SQLite, and `scope=all` is available only when the underlying inventory is
+needed. No LLM call or database write occurs in this request path.
+
 ## Extraction happens in two tiers, not one
 
 Stage 1 filters on salary, seniority, and remote type — fields that must be extracted before they can be filtered on. The obvious reading is "enrich every job first." At ~10,000 postings and ~10s per CLI call that is 27+ hours per run.
@@ -43,10 +59,13 @@ Consequence for stage 1: it filters on heuristic values, which are sometimes nul
 Non-negotiables. Binary, no scoring. The FTS corpus query is SQL; the remaining
 preference checks are deterministic local code.
 
-- Geography / remote compatibility and configured target companies
+- Geography / remote compatibility
 - Configured exclusion text (which can include work-authorization language)
 - Salary floor when `salary_max` is known — unknown compensation passes
-- Configured seniority values — an unknown seniority passes
+- Configured seniority values — friendly labels such as `entry level`,
+  `associate`, and `mid-level` are normalized to the canonical job levels;
+  an unsupported saved label remains a literal boundary rather than silently
+  disabling seniority filtering; an unknown job seniority passes
 - Open, active, canonical jobs only; company not blocked
 - The latest `skip` or `block_company` triage decision excludes a job;
   `interested` remains visible and marked as such
@@ -90,6 +109,7 @@ Structured, explainable, and calculated locally from extracted fields:
 | Remote compatibility | Match against preference; unknown is neutral |
 | Salary suitability | `salary_max` against the floor; unknown is neutral |
 | Company tier | 1 = dream … 5 = never |
+| Preferred company | A listed company receives a soft boost; an unlisted company is neutral |
 | Freshness | Exponential decay from `posted_at`, or `first_seen_at` when absent |
 
 Stack/profile overlap is part of the lexical exact-term tie-breaker, not a
@@ -101,6 +121,10 @@ BM25 is normalized to 0–1 within the FTS candidate set. The current retrieval
 score is `0.6 × lexical + 0.4 × feature`; lexical is `0.8 × BM25 + 0.2 ×`
 weighted exact-term score. These coefficients are currently explicit in
 `src/matching/retrieve.ts`, not config. The default candidate limit is 60.
+
+Changing skills, title aliases, or skill aliases clears cached LLM-expanded
+`query_terms`; the worker regenerates them on its next `jobs:rank -- --expand`
+run rather than using stale vocabulary from the old profile.
 
 ### The known weakness
 
@@ -115,21 +139,25 @@ Watch for the failure mode: if good jobs are consistently absent from the top 60
 
 ## Stage 3 — LLM rerank (expensive, ~60 items)
 
-Each call returns, per job — scoring **and** the LLM extraction tier in one response:
+Each call explicitly requests a strict `results` object, with one per-job
+scoring and extraction record. Codex runs receive the same JSON Schema natively;
+local Zod validation remains the final safeguard:
 
 ```json
 {
-  "job_id": 123,
-  "score": 88,
-  "reasoning": "concise and concrete",
-  "gaps": ["requirement you don't meet", "..."],
-  "strengths": ["specific overlap", "..."],
-  "flags": ["salary below floor", "requires on-site", "..."],
-  "extracted": {
-    "salary_min": 70000, "salary_max": 90000, "currency": "EUR",
-    "seniority": "senior", "remote_type": "remote",
-    "stack": ["typescript", "postgres"]
-  }
+  "results": [{
+    "job_id": 123,
+    "score": 88,
+    "reasoning": "concise and concrete",
+    "gaps": ["requirement you don't meet", "..."],
+    "strengths": ["specific overlap", "..."],
+    "flags": ["salary below floor", "requires on-site", "..."],
+    "extracted": {
+      "salary_min": 70000, "salary_max": 90000, "currency": "EUR",
+      "seniority": "senior", "remote_type": "remote",
+      "stack": ["typescript", "postgres"]
+    }
+  }]
 }
 ```
 
@@ -154,15 +182,16 @@ responsibilities.
 
 ### Parse ladder
 
-Every task response is parsed and validated with its task-specific Zod schema.
-Claude is requested to emit a JSON envelope; its result and the text outputs
-from other providers use the same parser:
+Every task response is validated with its task-specific Zod schema. Codex
+receives a native JSON Schema when the task has a strict object-shaped response;
+Claude's JSON envelope and any text fallback use the same local parser:
 
-1. Extract a fenced or balanced JSON candidate
-2. Decode JSON
-3. Validate with Zod
-4. On failure, one repair retry with the validation error fed back
-5. On second failure, record `parse_failed` in `llm_runs` and continue — **never crash the batch**
+1. Use provider-native schema enforcement when configured
+2. Extract a fenced or balanced JSON candidate
+3. Decode JSON
+4. Validate with Zod
+5. On failure, one repair retry with the validation error fed back
+6. On second failure, record `parse_failed` in `llm_runs` and continue — **never crash the batch**
 
 A partially-scored batch is fine. Jobs missing a score fall back to their stage 2 rank and get retried next run.
 

@@ -149,6 +149,7 @@ export async function runStructured<T>(
       firstResult = await provider.run(options.prompt, {
         model,
         timeoutMs: options.timeoutMs,
+        outputSchema: options.outputSchema,
       });
     } catch (cause) {
       saveRun(database, {
@@ -207,6 +208,7 @@ export async function runStructured<T>(
       const repaired = await provider.run(repairPrompt, {
         model,
         timeoutMs: options.timeoutMs,
+        outputSchema: options.outputSchema,
       });
       const repairedParsed = parseStructured(repaired.text, options.schema);
       if (repairedParsed.value !== null) {

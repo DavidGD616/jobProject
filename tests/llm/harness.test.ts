@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -132,6 +133,24 @@ test("provider subprocesses reject an already-aborted signal before spawning", a
       cause.status === "timeout" &&
       cause.message === "provider invocation aborted",
   );
+});
+
+test("provider subprocesses stage schema files in the isolated cwd and capture final output", async () => {
+  const schema = { type: "object", properties: { answer: { type: "string" } } };
+  const script = [
+    'const fs = require("node:fs");',
+    'const schema = JSON.parse(fs.readFileSync("response.schema.json", "utf8"));',
+    'if (schema.type !== "object") process.exit(2);',
+    'fs.writeFileSync("final.json", "{\\"answer\\":\\"structured\\"}");',
+    "process.stdout.write(process.cwd());",
+  ].join(" ");
+  const result = await runCli(process.execPath, ["-e", script], {
+    timeoutMs: 1_000,
+    inputFiles: [{ name: "response.schema.json", content: JSON.stringify(schema) }],
+    outputFiles: ["final.json"],
+  });
+  assert.equal(result.outputFiles["final.json"], '{"answer":"structured"}');
+  assert.equal(existsSync(result.stdout), false);
 });
 
 test("benchmark reports successes and parse-like failures without database writes", async () => {

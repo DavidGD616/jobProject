@@ -9,6 +9,40 @@ import { profileTerms, lexicalScore, stripBoilerplate, tokenize } from "./text";
 
 const SENIORITY_ORDER = ["intern", "junior", "mid", "senior", "staff", "lead"];
 
+/**
+ * Preferences are written for people (for example, "entry level" and
+ * "mid-level"), while ingestion uses a small canonical vocabulary. Keep the
+ * saved profile wording intact and normalize only when comparing it to jobs.
+ */
+function seniorityKey(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[_.-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function normalizeSeniority(value: string): string | null {
+  const normalized = seniorityKey(value);
+  if (["intern", "internship"].includes(normalized)) return "intern";
+  if (["entry", "entry level", "associate", "junior", "jr"].includes(normalized)) return "junior";
+  if (["mid", "mid level", "intermediate"].includes(normalized)) return "mid";
+  if (["senior", "sr"].includes(normalized)) return "senior";
+  if (normalized === "staff") return "staff";
+  if (["lead", "principal"].includes(normalized)) return "lead";
+  return null;
+}
+
+function preferredSeniorities(profile: Profile): string[] {
+  return [...new Set((profile.preferences.seniorities ?? []).flatMap((value) => {
+    // Keep a literal normalized fallback for a user-entered label we do not
+    // know yet. Dropping it would silently disable the person's seniority
+    // boundary and admit every known level instead.
+    const normalized = normalizeSeniority(value) ?? seniorityKey(value);
+    return normalized ? [normalized] : [];
+  }))];
+}
+
 export interface RankedMatch extends Match {
   job: Job;
   company: { id: number; name: string; slug: string; tier: number };
@@ -107,6 +141,7 @@ function normalizeBm25(rows: readonly FtsCandidate[]): Map<number, number> {
 
 function passesStageOne(job: Job, company: { name: string; slug: string; blocked: boolean }, profile: Profile): boolean {
   const preferences = profile.preferences;
+  const seniorities = preferredSeniorities(profile);
   if (company.blocked || job.closedAt !== null || job.canonicalId !== null) return false;
   const text = textOf(job);
   if (preferences.exclusions?.some((term) => text.includes(term.toLowerCase()))) return false;
@@ -123,10 +158,9 @@ function passesStageOne(job: Job, company: { name: string; slug: string; blocked
     !preferences.remoteTypes.includes(job.remoteType as "remote" | "hybrid" | "onsite")
   ) return false;
   if (
-    preferences.seniorities &&
-    preferences.seniorities.length > 0 &&
+    seniorities.length > 0 &&
     job.seniority &&
-    !preferences.seniorities.includes(job.seniority)
+    !seniorities.includes(normalizeSeniority(job.seniority) ?? seniorityKey(job.seniority))
   ) return false;
   if (preferences.locations && preferences.locations.length > 0 && job.location) {
     const location = job.location.toLowerCase();
@@ -134,20 +168,37 @@ function passesStageOne(job: Job, company: { name: string; slug: string; blocked
     const remoteAllowed = job.remoteType === "remote" && preferences.remoteTypes?.includes("remote");
     if (!locationMatches && !remoteAllowed) return false;
   }
-  if (preferences.targetCompanies && preferences.targetCompanies.length > 0) {
-    const companyText = `${company.name} ${company.slug}`.toLowerCase();
-    if (!preferences.targetCompanies.some((value) => companyText.includes(value.toLowerCase()))) return false;
-  }
   return true;
 }
 
+/**
+ * The profile labels these as companies the person would especially like to
+ * see. That is an affinity signal, not a requirement that should discard all
+ * otherwise relevant roles when none of those companies are in the local
+ * ledger yet.
+ */
+function targetCompanyBoost(
+  company: { name: string; slug: string },
+  profile: Profile,
+): number {
+  const targets = profile.preferences.targetCompanies;
+  if (!targets || targets.length === 0) return 0;
+  const companyText = `${company.name} ${company.slug}`.toLowerCase();
+  return targets.some((value) => companyText.includes(value.toLowerCase()))
+    ? 0.12
+    : 0;
+}
+
 function seniorityScore(job: Job, profile: Profile): number {
-  if (!job.seniority || !profile.preferences.seniorities?.length) return 0.55;
-  const actual = SENIORITY_ORDER.indexOf(job.seniority);
+  const targets = preferredSeniorities(profile);
+  if (!job.seniority || targets.length === 0) return 0.55;
+  const actual = SENIORITY_ORDER.indexOf(normalizeSeniority(job.seniority) ?? "");
   if (actual < 0) return 0.45;
-  const target = Math.min(
-    ...profile.preferences.seniorities.map((value) => Math.max(0, SENIORITY_ORDER.indexOf(value))),
-  );
+  const targetLevels = targets
+    .map((value) => SENIORITY_ORDER.indexOf(value))
+    .filter((value) => value >= 0);
+  if (targetLevels.length === 0) return 0.55;
+  const target = Math.min(...targetLevels);
   return Math.max(0, 1 - Math.abs(actual - target) * 0.25);
 }
 
@@ -157,7 +208,12 @@ function freshnessScore(job: Job, now: Date): number {
   return Math.exp(-ageDays / 45);
 }
 
-function featureScore(job: Job, company: { tier: number }, profile: Profile, now: Date): number {
+function featureScore(
+  job: Job,
+  company: { tier: number; name: string; slug: string },
+  profile: Profile,
+  now: Date,
+): number {
   const remote = profile.preferences.remoteTypes?.length
     ? job.remoteType === null || job.remoteType === "unknown"
       ? 0.5
@@ -167,7 +223,12 @@ function featureScore(job: Job, company: { tier: number }, profile: Profile, now
     ? 0.5
     : Math.max(0, Math.min(1, job.salaryMax / profile.preferences.minSalary - 0.25));
   const tier = Math.max(0, Math.min(1, 1 - (company.tier - 1) / 4));
-  return seniorityScore(job, profile) * 0.25 + remote * 0.2 + salary * 0.2 + tier * 0.15 + freshnessScore(job, now) * 0.2;
+  const base = seniorityScore(job, profile) * 0.25
+    + remote * 0.2
+    + salary * 0.2
+    + tier * 0.15
+    + freshnessScore(job, now) * 0.2;
+  return Math.min(1, base + targetCompanyBoost(company, profile));
 }
 
 function upsertMatch(database: JobHuntDatabase, input: {
@@ -317,17 +378,22 @@ export function retrieveMatches(
 }
 
 export function listRankedMatches(
-  profileId: number,
+  profile: Pick<Profile, "id" | "version">,
   options: { limit?: number; database?: JobHuntDatabase } = {},
 ): RankedMatch[] {
   const database = options.database ?? db;
   const limit = options.limit ?? 100;
-  const decisions = latestTriage(database, profileId);
+  const decisions = latestTriage(database, profile.id);
   const rows = database.select({ match: matches, job: jobs, company: companies })
     .from(matches)
     .innerJoin(jobs, eq(matches.jobId, jobs.id))
     .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(and(eq(matches.profileId, profileId), isNull(jobs.closedAt), eq(companies.active, true)))
+    .where(and(
+      eq(matches.profileId, profile.id),
+      eq(matches.profileVersion, profile.version),
+      isNull(jobs.closedAt),
+      eq(companies.active, true),
+    ))
     .all()
     .filter(({ job, company }) => !company.blocked && !["skip", "block_company"].includes(decisions.get(job.id) ?? ""))
     .sort((left, right) => {

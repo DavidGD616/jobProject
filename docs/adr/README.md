@@ -16,6 +16,7 @@ One file per decision. Numbered, immutable once `Accepted`.
 | [0008](0008-no-embeddings-lexical-retrieval.md) | No embeddings; lexical + feature retrieval | Accepted |
 | [0009](0009-local-browser-automation.md) | Local browser automation, agent-generated selectors | Accepted |
 | [0010](0010-company-discovery.md) | The company list is derived, not curated | Accepted |
+| [0011](0011-profile-guided-explore-candidates.md) | Profile-guided Explore candidates | Accepted |
 
 ## Rules
 

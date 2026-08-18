@@ -1,6 +1,6 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { spawn } from "node:child_process";
 
 const MAX_TIMEOUT_MS = 2_147_483_647;
@@ -28,6 +28,19 @@ export interface CliInvocationResult {
   stdout: string;
   stderr: string;
   durationMs: number;
+  outputFiles: Record<string, string | null>;
+}
+
+interface StagedFile {
+  name: string;
+  content: string;
+}
+
+function safeFileName(name: string): string {
+  if (!name || name === "." || name === ".." || basename(name) !== name) {
+    throw new RangeError("CLI staged file names must be non-empty basenames");
+  }
+  return name;
 }
 
 function isRateLimited(text: string): boolean {
@@ -50,12 +63,24 @@ function killProcessGroup(child: ReturnType<typeof spawn>): void {
 export async function runCli(
   command: string,
   args: readonly string[],
-  options: { timeoutMs: number; signal?: AbortSignal },
+  options: {
+    timeoutMs: number;
+    signal?: AbortSignal;
+    inputFiles?: readonly StagedFile[];
+    outputFiles?: readonly string[];
+  },
 ): Promise<CliInvocationResult> {
   if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 0 || options.timeoutMs > MAX_TIMEOUT_MS) {
     throw new RangeError(`timeoutMs must be an integer from 0 to ${MAX_TIMEOUT_MS}`);
   }
+  const inputFiles = options.inputFiles ?? [];
+  const outputFiles = [...new Set(options.outputFiles ?? [])];
+  for (const file of inputFiles) safeFileName(file.name);
+  for (const name of outputFiles) safeFileName(name);
   const cwd = await mkdtemp(join(tmpdir(), "job-hunt-llm-"));
+  for (const file of inputFiles) {
+    await writeFile(join(cwd, file.name), file.content, "utf8");
+  }
   if (options.signal?.aborted) {
     await rm(cwd, { recursive: true, force: true });
     throw new ProviderProcessError({
@@ -121,10 +146,18 @@ export async function runCli(
         exitCode: result.code,
       });
     }
+    const capturedOutput = Object.fromEntries(await Promise.all(outputFiles.map(async (name) => {
+      try {
+        return [name, await readFile(join(cwd, name), "utf8")];
+      } catch {
+        return [name, null];
+      }
+    })));
     return {
       stdout: out,
       stderr: err,
       durationMs: Date.now() - startedAt,
+      outputFiles: capturedOutput,
     };
   } catch (cause) {
     if (cause instanceof ProviderProcessError) throw cause;
