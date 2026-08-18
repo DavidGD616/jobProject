@@ -92,8 +92,8 @@ function llmPrompt(profile: Profile, companyName: string, jobTitle: string, desc
   return [
     "Create a fact-grounded tailoring PLAN for a resume and cover letter.",
     "Use only the candidate facts supplied below. Never invent employers, job titles, dates, metrics, technologies, outcomes, clearance, citizenship, or years of experience.",
-    "Do not edit historic experience titles, employers, dates, or prose. Select only source indices and exact skill names supplied below. Multiple selected_bullets objects for the same experience are allowed and will be merged.",
-    "Choose 2–3 relevant project_indices, up to 15 exact selected_skills, and relevant experience/project bullet indices. An experience bullet must directly support a named skill or the target role; do not select generic production/design facts for a software role when stronger project evidence exists.",
+    "Do not edit historic experience titles, employers, dates, or prose. Every historic experience entry and bullet remains in the final resume. Select only source indices and exact skill names supplied below. Multiple selected_bullets objects for the same experience are allowed and will be merged.",
+    "Use selected_bullets only to rank source facts: prefer direct required skill or role evidence, then truthful transferable customer, design, delivery, or collaboration facts. Never imply that a transferable fact proves a named technology. Choose 2–3 relevant project_indices, up to 15 exact selected_skills, and relevant experience/project bullet indices. A project marked featured is a user-directed presentation priority and must remain selected; it will appear first in the final resume.",
     "Return every JSON key required by the schema. Use empty arrays when no source is selected, and null for headline, summary, or cover_letter when no safe suggestion exists. headline, summary, cover_letter, and evidence are suggestions only; they must contain no unsupported claim, and the local engine independently validates source references and generates final factual prose.",
     `Target company: ${companyName}`,
     `Target role: ${jobTitle}`,

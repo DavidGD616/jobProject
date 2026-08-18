@@ -221,6 +221,10 @@ export type ResumeProfileJson = {
     technologies?: string[];
     /** Truthful, user-supplied project accomplishments for role-specific selection. */
     bullets?: string[];
+    /** Pin a user-designated project ahead of relevance-ranked projects. */
+    featured?: boolean;
+    /** Optional user-supplied completion date; never inferred by the tailor. */
+    completedAt?: string;
   }>;
 };
 

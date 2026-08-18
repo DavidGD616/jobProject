@@ -11,6 +11,7 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { applicationRuns, applications, companies, contacts, events, extractionRules, jobs, llmRuns, matches, profiles, rankingFeedback, resumeVariants, sourcePolls, tailorRequests, triage } from "@/db/schema";
 import { saveProfile } from "@/matching";
 import { createTailoredVariant, resumeToHtml } from "@/tailor";
+import { buildGroundedTailoringPlan, mergeSelections, planWithSelections, resumeFromPlan } from "@/tailor/grounding";
 import type { LlmProvider, ProviderResult } from "@/llm";
 
 function createTestDatabase() {
@@ -73,9 +74,9 @@ function technicalProfile(db: ReturnType<typeof createTestDatabase>["db"], now: 
         startDate: "2022",
         endDate: "Present",
         bullets: [
+          "Led onboarding sessions for new teammates.",
           "Built TypeScript and Node.js API services for customer workflows.",
           "Created React and Next.js interfaces with automated tests.",
-          "Led onboarding sessions for new teammates.",
         ],
       }],
       education: [],
@@ -157,13 +158,14 @@ test("deterministic tailoring changes the target role evidence without changing 
       assert.equal(resume.experience?.[0]?.title, "Software Engineer");
       assert.equal(resume.experience?.[0]?.startDate, "2022");
       assert.equal(resume.experience?.[0]?.endDate, "Present");
-      assert.deepEqual([...resume.experience?.[0]?.bullets ?? []].sort(), [
+      assert.deepEqual(resume.experience?.[0]?.bullets, [
         "Built TypeScript and Node.js API services for customer workflows.",
         "Created React and Next.js interfaces with automated tests.",
-      ].sort());
+        "Led onboarding sessions for new teammates.",
+      ]);
       assert.equal(tailored.variant.profileVersion, profile.version);
       assert.equal(tailored.variant.jobContentHash, job.contentHash);
-      assert.equal(tailored.variant.promptVersion, "tailor-v5");
+      assert.equal(tailored.variant.promptVersion, "tailor-v6");
       assert.equal(tailored.variant.fitAssessment?.level, "strong");
       assert.ok((tailored.variant.evidenceMap ?? []).some((item) => item.source === "project"));
       assert.ok((tailored.variant.evidenceMap ?? []).some((item) => item.source === "experience"));
@@ -177,6 +179,195 @@ test("deterministic tailoring changes the target role evidence without changing 
       assert.match(html, /Customer Portal/);
       assert.doesNotMatch(html, /Mobile Sketchbook/);
       assert.match(resumeToHtml(resume), /Taylor Example/);
+    } finally {
+      sqlite.close();
+    }
+  });
+});
+
+test("tailoring retains historical work while foregrounding transferable facts and a featured project", async () => {
+  const { db, sqlite } = createTestDatabase();
+  await withExportDirectory(async () => {
+    try {
+      const now = new Date("2026-08-18T12:00:00.000Z");
+      const job = insertCompanyAndJob({
+        db,
+        now,
+        title: "Full Stack Software Engineer",
+        description: "Build TypeScript, React, and Next.js applications with PostgreSQL. Translate customer requirements into functional interface designs and partner with cross-functional teams to deliver production workflows.",
+      });
+      const profile = saveProfile({
+        resumeJson: {
+          name: "Taylor Example",
+          headline: "Applied AI & Full-Stack Software Engineer",
+          summary: "Applied AI and full-stack engineer.",
+          experience: [{
+            company: "TaylorMade Golf",
+            title: "Digital Design & Production Specialist",
+            startDate: "2021",
+            endDate: "Present",
+            bullets: [
+              "Maintained production asset libraries across campaigns.",
+              "Translated client requirements into production-ready visual workflows.",
+              "Coordinated delivery reviews with cross-functional partners.",
+            ],
+          }],
+          education: [],
+          projects: [
+            {
+              name: "Customer Portal",
+              description: "A TypeScript, React, and Next.js portal for customer account workflows.",
+              technologies: ["TypeScript", "React", "Next.js"],
+            },
+            {
+              name: "StrivIQ",
+              description: "A Flutter fitness application using Supabase and PostgreSQL workflows.",
+              technologies: ["Flutter", "Dart", "Supabase", "PostgreSQL"],
+              featured: true,
+              completedAt: "2026-08",
+            },
+          ],
+        },
+        skills: ["typescript", "react", "next.js", "postgresql", "flutter"],
+        titleAliases: ["full-stack software engineer"],
+        skillAliases: {},
+        preferences: {},
+      }, db, now);
+      const tailored = await createTailoredVariant({ jobId: job.id, profile, database: db, allowLlm: false, now });
+      const resume = tailored.variant.resumeJson;
+
+      assert.match(resume.headline ?? "", /^Full Stack Software Engineer \|/);
+      assert.equal(resume.experience?.[0]?.title, "Digital Design & Production Specialist");
+      assert.equal(resume.experience?.[0]?.company, "TaylorMade Golf");
+      assert.equal(resume.experience?.[0]?.startDate, "2021");
+      assert.equal(resume.experience?.[0]?.endDate, "Present");
+      assert.equal(
+        resume.experience?.[0]?.bullets?.[0],
+        "Translated client requirements into production-ready visual workflows.",
+      );
+      assert.deepEqual([...resume.experience?.[0]?.bullets ?? []].sort(), [
+        "Maintained production asset libraries across campaigns.",
+        "Translated client requirements into production-ready visual workflows.",
+        "Coordinated delivery reviews with cross-functional partners.",
+      ].sort());
+      assert.deepEqual(resume.projects?.map((project) => project.name), ["StrivIQ", "Customer Portal"]);
+      assert.equal(resume.projects?.[0]?.featured, true);
+      assert.equal(resume.projects?.[0]?.completedAt, "2026-08");
+    } finally {
+      sqlite.close();
+    }
+  });
+});
+
+test("all explicitly featured projects survive the normal relevance cap", () => {
+  const { db, sqlite } = createTestDatabase();
+  try {
+    const now = new Date("2026-08-18T12:00:00.000Z");
+    const source = technicalProfile(db, now);
+    const profile = saveProfile({
+      resumeJson: {
+        ...source.resumeJson,
+        projects: [
+          ...(source.resumeJson.projects ?? []).map((project) => ({ ...project, featured: true })),
+          {
+            name: "Architecture Notes",
+            description: "A small set of architecture notes for local development workflows.",
+            featured: true,
+          },
+        ],
+      },
+      skills: source.skills,
+      titleAliases: source.titleAliases,
+      skillAliases: source.skillAliases,
+      preferences: source.preferences,
+    }, db, now);
+    const plan = buildGroundedTailoringPlan({
+      profile,
+      jobTitle: "Full Stack Software Engineer",
+      description: "Build TypeScript and React applications with Node.js and PostgreSQL.",
+    });
+    const selections = mergeSelections(plan, profile, { projectIndices: [] });
+    const planWithAllFeatured = planWithSelections({
+      profile,
+      jobTitle: "Full Stack Software Engineer",
+      plan,
+      selections,
+    });
+    const resume = resumeFromPlan({
+      profile,
+      jobTitle: "Full Stack Software Engineer",
+      plan: planWithAllFeatured,
+    });
+
+    assert.deepEqual([...planWithAllFeatured.selections.projectIndices], [0, 1, 2, 3]);
+    assert.deepEqual(resume.projects?.map((project) => project.name), [
+      "Customer Portal",
+      "Workflow API",
+      "Mobile Sketchbook",
+      "Architecture Notes",
+    ]);
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("an unrelated featured project and production bullet stay on the resume but out of the cover letter", async () => {
+  const { db, sqlite } = createTestDatabase();
+  await withExportDirectory(async () => {
+    try {
+      const now = new Date("2026-08-18T12:00:00.000Z");
+      const job = insertCompanyAndJob({
+        db,
+        now,
+        title: "TypeScript Engineer",
+        description: "Build TypeScript and React web applications.",
+      });
+      const profile = saveProfile({
+        resumeJson: {
+          name: "Taylor Example",
+          headline: "Full-Stack Software Engineer",
+          summary: "Full-stack engineer.",
+          experience: [{
+            company: "TaylorMade Golf",
+            title: "Digital Design & Production Specialist",
+            bullets: ["Managed laser engraving equipment for retail signage."],
+          }],
+          education: [],
+          projects: [{
+            name: "Laser Engraving Portfolio",
+            description: "A gallery of engraved retail artwork.",
+            featured: true,
+          }],
+        },
+        skills: ["typescript", "react"],
+        titleAliases: ["full-stack software engineer"],
+        skillAliases: {},
+        preferences: {},
+      }, db, now);
+      const tailored = await createTailoredVariant({
+        jobId: job.id,
+        profile,
+        database: db,
+        allowLlm: true,
+        providers: [fakeProvider(JSON.stringify({
+          selected_bullets: [{ experience_index: 0, bullet_indices: [0] }],
+          project_indices: [0],
+          selected_project_bullets: [],
+          selected_skills: ["typescript", "react"],
+          headline: null,
+          summary: null,
+          cover_letter: null,
+          evidence: [],
+        }))],
+        now,
+      });
+
+      assert.deepEqual(tailored.variant.resumeJson.experience?.[0]?.bullets, [
+        "Managed laser engraving equipment for retail signage.",
+      ]);
+      assert.deepEqual(tailored.variant.resumeJson.projects?.map((project) => project.name), ["Laser Engraving Portfolio"]);
+      assert.equal(tailored.variant.coverLetter, null);
+      assert.ok(!(tailored.variant.evidenceMap ?? []).some((item) => /TaylorMade|laser engraving/i.test(item.label)));
     } finally {
       sqlite.close();
     }
@@ -222,20 +413,23 @@ test("LLM source selections merge repeated experience references against origina
 
       assert.equal(tailored.llmUsed, true);
       assert.match(prompt, /fact-grounded tailoring PLAN/i);
+      assert.match(prompt, /Every historic experience entry and bullet remains/i);
+      assert.match(prompt, /selected_bullets only to rank source facts/i);
       assert.ok(outputSchema);
       const schemaProperties = outputSchema.properties as Record<string, unknown>;
       const schemaRequired = outputSchema.required as string[];
       assert.deepEqual([...schemaRequired].sort(), Object.keys(schemaProperties).sort());
-      assert.deepEqual([...resume.experience?.[0]?.bullets ?? []].sort(), [
+      assert.deepEqual(resume.experience?.[0]?.bullets, [
         "Built TypeScript and Node.js API services for customer workflows.",
         "Created React and Next.js interfaces with automated tests.",
-      ].sort());
+        "Led onboarding sessions for new teammates.",
+      ]);
       assert.equal(resume.experience?.[0]?.title, "Software Engineer");
       assert.equal(resume.experience?.[0]?.startDate, "2022");
       assert.equal(resume.experience?.[0]?.endDate, "Present");
       assert.doesNotMatch(resume.headline ?? "", /Chief Architect/);
       assert.ok(!resume.skills?.includes("not-a-profile-skill"));
-      assert.equal(tailored.variant.promptVersion, "tailor-v5");
+      assert.equal(tailored.variant.promptVersion, "tailor-v6");
     } finally {
       sqlite.close();
     }

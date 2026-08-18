@@ -46,6 +46,12 @@ export const resumeProfileSchema = z.object({
     // project paragraph to select from. They remain source facts, never LLM
     // inventions.
     bullets: z.array(z.string().trim().min(1)).default([]),
+    // A candidate can explicitly feature a recent or representative project.
+    // It is presentation metadata, not an inferred claim about relevance.
+    featured: z.boolean().optional(),
+    // Keep user-supplied project chronology available to review UI without
+    // guessing a date from source order.
+    completedAt: z.string().trim().optional(),
   })).default([]),
 });
 

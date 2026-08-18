@@ -6,7 +6,7 @@ import type {
 } from "@/db/schema";
 
 /** Bump whenever the structured tailoring contract or factual rules change. */
-export const TAILOR_PROMPT_VERSION = "tailor-v5";
+export const TAILOR_PROMPT_VERSION = "tailor-v6";
 
 type RequirementKind = "skill" | "clearance" | "citizenship" | "years" | "seniority" | "role";
 
@@ -42,8 +42,14 @@ export interface GroundedTailoringPlan {
   selections: TailorSelections;
   skillScores: Map<string, number>;
   projectScores: number[];
+  /** User-designated projects that must survive relevance pruning. */
+  featuredProjectIndices: number[];
+  /** Transferable (not technical) project facts available for safe fallback. */
+  projectTransferableScores: number[];
   projectBulletScores: number[][];
   experienceBulletScores: number[][];
+  /** Transferable (not technical) source facts used only to prioritize bullets. */
+  experienceTransferableScores: number[][];
   evidenceMap: TailoringEvidence[];
   fitAssessment: TailorFitAssessment;
 }
@@ -225,6 +231,40 @@ function selectedIndicesForScores(scores: readonly number[], limit: number): num
   return relevant.filter((item) => item.score >= minimumScore).slice(0, limit).map((item) => item.index);
 }
 
+function featuredProjectIndices(resume: ResumeProfileJson): number[] {
+  return (resume.projects ?? []).flatMap((project, index) => project.featured ? [index] : []);
+}
+
+/**
+ * A featured project is a user-authored presentation choice, so it is never
+ * dropped just because a lexical relevance threshold favored another project.
+ */
+function selectedProjectIndices(
+  scores: readonly number[],
+  featuredIndices: readonly number[],
+  limit: number,
+): number[] {
+  const featured = [...new Set(featuredIndices)].filter((index) => index >= 0 && index < scores.length);
+  const featuredSet = new Set(featured);
+  const resultLimit = Math.max(limit, featured.length);
+  return [
+    ...featured,
+    ...selectedIndicesForScores(scores, resultLimit).filter((index) => !featuredSet.has(index)),
+  ].slice(0, resultLimit);
+}
+
+function orderedProjectIndices(
+  indices: Iterable<number>,
+  scores: readonly number[],
+  featuredIndices: readonly number[],
+): number[] {
+  const featured = new Set(featuredIndices);
+  return [...indices].sort((left, right) => {
+    const featuredDifference = Number(featured.has(right)) - Number(featured.has(left));
+    return featuredDifference || scores[right]! - scores[left]! || left - right;
+  });
+}
+
 function relevantIndicesForScores(scores: readonly number[], limit: number): number[] {
   return scores
     .map((score, index) => ({ index, score }))
@@ -239,6 +279,33 @@ function hasSpecificRoleOrSkillEvidence(text: string, requirements: readonly Tai
   return requirements.some((requirement) =>
     (requirement.kind === "skill" || requirement.kind === "role")
     && requirementMatchesText(requirement, text));
+}
+
+const transferableExperienceSignals = [
+  /\b(?:customer|client|user|stakeholder|partner)\b/i,
+  /\b(?:requirement|feedback|research|brief|need)\b/i,
+  /\b(?:design|prototype|workflow|interface|journey|ux|ui)\b/i,
+  /\b(?:collaborat|cross[ -]?functional|coordinat|partner)\b/i,
+  /\b(?:quality|test|review|process|production|launch|deliver)\b/i,
+];
+
+/**
+ * Transferable facts are never used to assert a technical requirement. They
+ * simply rise above unrelated facts when the job text asks for the same kind
+ * of customer, design, delivery, or collaboration work.
+ */
+function transferableFactScore(
+  text: string,
+  jobTerms: readonly string[],
+  requirements: readonly TailoringRequirement[],
+): number {
+  const jobText = [
+    ...jobTerms,
+    ...requirements.flatMap((requirement) => requirement.tokens),
+  ].join(" ");
+  return transferableExperienceSignals.reduce((score, signal) => (
+    signal.test(text) && signal.test(jobText) ? score + 1 : score
+  ), 0);
 }
 
 function sourceText(profile: Profile): string {
@@ -324,17 +391,24 @@ function rankSelections(
   profile: Profile,
   description: string,
   requirements: readonly TailoringRequirement[],
-): Pick<GroundedTailoringPlan, "skillScores" | "projectScores" | "projectBulletScores" | "experienceBulletScores" | "selections"> {
+): Pick<GroundedTailoringPlan, "skillScores" | "projectScores" | "featuredProjectIndices" | "projectTransferableScores" | "projectBulletScores" | "experienceBulletScores" | "experienceTransferableScores" | "selections"> {
   const jobTerms = terms(description);
   const resume = profile.resumeJson;
   const skills = canonicalSkills(profile);
   const skillScores = new Map(skills.map((skill) => [skill, scoreText(skill, jobTerms, requirements)]));
   const projectScores = (resume.projects ?? []).map((project) => scoreText([project.name, project.description, ...(project.technologies ?? []), ...(project.bullets ?? [])].join(" "), jobTerms, requirements));
+  const featuredIndices = featuredProjectIndices(resume);
+  const projectTransferableScores = (resume.projects ?? []).map((project) => transferableFactScore(
+    [project.name, project.description, ...(project.technologies ?? []), ...(project.bullets ?? [])].join(" "),
+    jobTerms,
+    requirements,
+  ));
   const projectBulletScores = (resume.projects ?? []).map((project) => (project.bullets ?? []).map((bullet) => scoreText(bullet, jobTerms, requirements)));
   const experienceBulletScores = (resume.experience ?? []).map((item) => item.bullets.map((bullet) => scoreText(bullet, jobTerms, requirements)));
+  const experienceTransferableScores = (resume.experience ?? []).map((item) => item.bullets.map((bullet) => transferableFactScore(bullet, jobTerms, requirements)));
 
   const selections: TailorSelections = {
-    projectIndices: new Set(selectedIndicesForScores(projectScores, 3)),
+    projectIndices: new Set(selectedProjectIndices(projectScores, featuredIndices, 3)),
     projectBulletIndices: new Map(),
     experienceBulletIndices: new Map(),
     skills: new Set(skills
@@ -349,14 +423,28 @@ function rankSelections(
     if (chosen.length > 0) addIndices(selections.projectBulletIndices, projectIndex, chosen);
   }
   for (const [experienceIndex, scores] of experienceBulletScores.entries()) {
-    // Do not retain an arbitrary off-target bullet just to fill the section.
-    // It is safer to show no bullet than to market unrelated work as evidence.
+    // Full work history is retained later. These source indices identify the
+    // direct evidence and safe transferable facts that may be foregrounded.
     const experience = resume.experience?.[experienceIndex];
-    const chosen = relevantIndicesForScores(scores, 3)
+    const direct = relevantIndicesForScores(scores, 3)
       .filter((bulletIndex) => hasSpecificRoleOrSkillEvidence(experience?.bullets[bulletIndex] ?? "", requirements));
+    const transferable = relevantIndicesForScores(
+      experienceTransferableScores[experienceIndex] ?? [],
+      2,
+    );
+    const chosen = [...new Set([...direct, ...transferable])];
     if (chosen.length > 0) addIndices(selections.experienceBulletIndices, experienceIndex, chosen);
   }
-  return { skillScores, projectScores, projectBulletScores, experienceBulletScores, selections };
+  return {
+    skillScores,
+    projectScores,
+    featuredProjectIndices: featuredIndices,
+    projectTransferableScores,
+    projectBulletScores,
+    experienceBulletScores,
+    experienceTransferableScores,
+    selections,
+  };
 }
 
 function sourceEvidenceForRequirement(input: {
@@ -418,9 +506,12 @@ function sourceEvidenceForRequirement(input: {
 function fallbackRoleEvidence(input: {
   profile: Profile;
   requirement: TailoringRequirement | undefined;
+  requirements: readonly TailoringRequirement[];
   selections: TailorSelections;
   projectScores: readonly number[];
+  projectTransferableScores: readonly number[];
   experienceBulletScores: readonly number[][];
+  experienceTransferableScores: readonly number[][];
 }): TailoringEvidence[] {
   if (!input.requirement) return [];
   const resume = input.profile.resumeJson;
@@ -428,6 +519,11 @@ function fallbackRoleEvidence(input: {
   for (const projectIndex of descendingByScore(input.selections.projectIndices, (index) => input.projectScores[index] ?? 0)) {
     const project = resume.projects?.[projectIndex];
     if (!project) continue;
+    const projectText = [project.name, project.description, ...(project.technologies ?? []), ...(project.bullets ?? [])].join(" ");
+    if (
+      !hasSpecificRoleOrSkillEvidence(projectText, input.requirements)
+      && (input.projectTransferableScores[projectIndex] ?? 0) <= 0
+    ) continue;
     evidence.push({
       requirement: input.requirement.label,
       source: "project",
@@ -443,6 +539,10 @@ function fallbackRoleEvidence(input: {
     for (const bulletIndex of selected) {
       const bullet = experience.bullets[bulletIndex];
       if (!bullet) continue;
+      if (
+        !hasSpecificRoleOrSkillEvidence(bullet, input.requirements)
+        && (input.experienceTransferableScores[experienceIndex]?.[bulletIndex] ?? 0) <= 0
+      ) continue;
       evidence.push({
         requirement: input.requirement.label,
         source: "experience",
@@ -470,7 +570,9 @@ function createEvidenceMap(input: {
   requirements: readonly TailoringRequirement[];
   selections: TailorSelections;
   projectScores: readonly number[];
+  projectTransferableScores: readonly number[];
   experienceBulletScores: readonly number[][];
+  experienceTransferableScores: readonly number[][];
 }): TailoringEvidence[] {
   const evidence = input.requirements
     .filter((requirement) => requirement.kind === "skill" || requirement.kind === "role")
@@ -551,7 +653,9 @@ export function buildGroundedTailoringPlan(input: {
     requirements,
     selections: ranked.selections,
     projectScores: ranked.projectScores,
+    projectTransferableScores: ranked.projectTransferableScores,
     experienceBulletScores: ranked.experienceBulletScores,
+    experienceTransferableScores: ranked.experienceTransferableScores,
   });
   return {
     ...ranked,
@@ -587,11 +691,13 @@ export function mergeSelections(
   for (const selection of requested.experienceBullets ?? []) {
     const experience = resume.experience?.[selection.experienceIndex];
     if (!experience || !Number.isInteger(selection.experienceIndex)) continue;
+    // The model can suggest a transferable fact to foreground, but it cannot
+    // alter text or make that fact technical evidence: evidence matching is
+    // independently checked against each requirement below.
     addIndices(next.experienceBulletIndices, selection.experienceIndex, selection.bulletIndices.filter((index) =>
       Number.isInteger(index)
       && index >= 0
-      && index < experience.bullets.length
-      && hasSpecificRoleOrSkillEvidence(experience.bullets[index]!, plan.requirements)));
+      && index < experience.bullets.length));
   }
   const profileSkills = canonicalSkills(profile);
   for (const requestedSkill of requested.skills ?? []) {
@@ -603,12 +709,22 @@ export function mergeSelections(
 
 /** Limit merged source selections while retaining their original-source identities. */
 export function limitSelections(plan: GroundedTailoringPlan, selections: TailorSelections): TailorSelections {
-  const eligibleProjectIndices = new Set(selectedIndicesForScores(plan.projectScores, 3));
+  const projectLimit = Math.max(3, plan.featuredProjectIndices.length);
+  const eligibleProjectIndices = new Set(selectedProjectIndices(
+    plan.projectScores,
+    plan.featuredProjectIndices,
+    projectLimit,
+  ));
+  const projectIndices = new Set([
+    ...selections.projectIndices,
+    ...plan.featuredProjectIndices,
+  ]);
   const limited: TailorSelections = {
-    projectIndices: new Set(descendingByScore(
-      [...selections.projectIndices].filter((index) => eligibleProjectIndices.has(index)),
-      (index) => plan.projectScores[index] ?? 0,
-    ).slice(0, 3)),
+    projectIndices: new Set(orderedProjectIndices(
+      [...projectIndices].filter((index) => eligibleProjectIndices.has(index)),
+      plan.projectScores,
+      plan.featuredProjectIndices,
+    ).slice(0, projectLimit)),
     projectBulletIndices: new Map(),
     experienceBulletIndices: new Map(),
     skills: new Set([...selections.skills]
@@ -654,7 +770,42 @@ function sourceSummary(resume: ResumeProfileJson): string | undefined {
   return sentence(first);
 }
 
-/** Render selections as a truthful resume: only top matter and source order change. */
+function orderedExperienceBulletIndices(input: {
+  experience: NonNullable<ResumeProfileJson["experience"]>[number];
+  experienceIndex: number;
+  plan: GroundedTailoringPlan;
+  selections: TailorSelections;
+}): number[] {
+  const selected = input.selections.experienceBulletIndices.get(input.experienceIndex) ?? new Set<number>();
+  const priorityTier = (bulletIndex: number): number => {
+    const bullet = input.experience.bullets[bulletIndex] ?? "";
+    if (hasSpecificRoleOrSkillEvidence(bullet, input.plan.requirements)) return 0;
+    if ((input.plan.experienceTransferableScores[input.experienceIndex]?.[bulletIndex] ?? 0) > 0) return 1;
+    return 2;
+  };
+
+  return input.experience.bullets.map((_, index) => index).sort((left, right) => {
+    const tierDifference = priorityTier(left) - priorityTier(right);
+    if (tierDifference) return tierDifference;
+
+    // Model selections are reviewable ranking suggestions, never a reason to
+    // remove history. They only break ties among facts already relevant or
+    // transferable; unrelated facts retain their source order.
+    if (priorityTier(left) < 2) {
+      const selectedDifference = Number(selected.has(right)) - Number(selected.has(left));
+      if (selectedDifference) return selectedDifference;
+      const transferableDifference = (input.plan.experienceTransferableScores[input.experienceIndex]?.[right] ?? 0)
+        - (input.plan.experienceTransferableScores[input.experienceIndex]?.[left] ?? 0);
+      if (transferableDifference) return transferableDifference;
+      const evidenceDifference = (input.plan.experienceBulletScores[input.experienceIndex]?.[right] ?? 0)
+        - (input.plan.experienceBulletScores[input.experienceIndex]?.[left] ?? 0);
+      if (evidenceDifference) return evidenceDifference;
+    }
+    return left - right;
+  });
+}
+
+/** Render a truthful resume: only top matter and source order change. */
 export function resumeFromPlan(input: {
   profile: Profile;
   jobTitle: string;
@@ -675,7 +826,11 @@ export function resumeFromPlan(input: {
   const selectedSkills = [...selections.skills]
     .sort((left, right) => (input.plan.skillScores.get(right) ?? 0) - (input.plan.skillScores.get(left) ?? 0) || left.localeCompare(right));
   const displaySkills = selectedSkills.map(displaySkill);
-  const selectedProjects = descendingByScore(selections.projectIndices, (index) => input.plan.projectScores[index] ?? 0)
+  const selectedProjects = orderedProjectIndices(
+    selections.projectIndices,
+    input.plan.projectScores,
+    input.plan.featuredProjectIndices,
+  )
     .map((projectIndex) => {
       const project = resume.projects?.[projectIndex];
       if (!project) return null;
@@ -687,13 +842,15 @@ export function resumeFromPlan(input: {
     })
     .filter((project): project is NonNullable<typeof project> => project !== null);
   const selectedExperience = (resume.experience ?? []).map((experience, experienceIndex) => {
-    const selectedBullets = descendingByScore(
-      selections.experienceBulletIndices.get(experienceIndex) ?? [],
-      (bulletIndex) => input.plan.experienceBulletScores[experienceIndex]?.[bulletIndex] ?? 0,
-    ).map((bulletIndex) => experience.bullets[bulletIndex]).filter((bullet): bullet is string => Boolean(bullet));
-    // Existing employer names, titles, and dates stay untouched; only stored
-    // evidence bullets are selected and reordered.
-    return { ...experience, bullets: selectedBullets };
+    const orderedBullets = orderedExperienceBulletIndices({
+      experience,
+      experienceIndex,
+      plan: input.plan,
+      selections,
+    }).map((bulletIndex) => experience.bullets[bulletIndex]).filter((bullet): bullet is string => Boolean(bullet));
+    // Historic employer names, titles, dates, and every source bullet stay
+    // intact. Target-specific and transferable facts are merely foregrounded.
+    return { ...experience, bullets: orderedBullets };
   });
   const useTargetTitle = canUseTargetTitle(input.profile, input.jobTitle, input.plan.fitAssessment);
   const baseHeadline = resume.headline ?? input.profile.titleAliases[0];
@@ -729,7 +886,9 @@ export function planWithSelections(input: {
     requirements: input.plan.requirements,
     selections,
     projectScores: input.plan.projectScores,
+    projectTransferableScores: input.plan.projectTransferableScores,
     experienceBulletScores: input.plan.experienceBulletScores,
+    experienceTransferableScores: input.plan.experienceTransferableScores,
   });
   return {
     ...input.plan,
