@@ -27,6 +27,10 @@ export const resumeProfileSchema = z.object({
   portfolioUrl: z.string().trim().url().optional(),
   headline: z.string().trim().optional(),
   summary: z.string().trim().optional(),
+  // Profile skills remain the canonical search vocabulary. This optional field
+  // exists for a stored role-specific variant to carry its intentionally
+  // shortened display list without losing it during validation.
+  skills: z.array(z.string().trim().min(1)).optional(),
   interests: z.array(z.string().trim().min(1)).default([]),
   experience: z.array(experienceSchema).default([]),
   education: z.array(z.object({
@@ -38,6 +42,10 @@ export const resumeProfileSchema = z.object({
     name: z.string().trim().min(1),
     description: z.string().trim().min(1),
     technologies: z.array(z.string().trim().min(1)).default([]),
+    // Optional user-authored proof points give the tailor more than a single
+    // project paragraph to select from. They remain source facts, never LLM
+    // inventions.
+    bullets: z.array(z.string().trim().min(1)).default([]),
   })).default([]),
 });
 

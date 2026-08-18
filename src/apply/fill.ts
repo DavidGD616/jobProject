@@ -43,6 +43,14 @@ export async function fillApplicationPlan(
   return { filled, skipped, submissionBlocked: true };
 }
 
+const materialSnapshotSchema = z.object({
+  resumeVariantId: z.number().int().nullable(),
+  profileVersion: z.number().int().nullable(),
+  jobContentHash: z.string().nullable(),
+  promptVersion: z.string().nullable(),
+  coverLetterHash: z.string(),
+});
+
 const storedPlanSchema = z.object({
   adapter: z.enum(["greenhouse", "lever", "generic"]),
   url: z.string().url(),
@@ -57,6 +65,9 @@ const storedPlanSchema = z.object({
   customQuestions: z.array(z.string()),
   submissionBlocked: z.literal(true),
   instructions: z.array(z.string()),
+  // Legacy plans do not have this, but new material provenance must survive a
+  // later fill-status update rather than being stripped by Zod parsing.
+  materialSnapshot: materialSnapshotSchema.optional(),
 });
 
 export interface ApplicationFillResult {

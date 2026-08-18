@@ -80,10 +80,10 @@ Small, unglamorous, high daily value. Do it before tailoring — it pays off fro
 
 Tier C, first half.
 
-- ✅ Bullet selection and deterministic reordering from real facts only
-- ✅ Grounded cover-letter draft, human-edited in the UI
+- ✅ Evidence-grounded target headline, summary, project/skill focus, and bullet selection from real facts only
+- ✅ Job-aware, evidence-grounded cover-letter draft, human-edited in the UI
 - ✅ HTML and optional local Chromium PDF rendering from `resume_json`
-- ✅ `resume_variants` — every export is tied to its destination
+- ✅ `resume_variants` — every export is tied to its destination with profile/job/prompt provenance and a visible fit/gap explanation
 
 *Exit:* a tailored, human-approved resume + letter in under 10 minutes.
 

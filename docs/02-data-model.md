@@ -183,6 +183,11 @@ resume_variants (
   resume_json   json not null
   cover_letter  text                       -- grounded draft; human-editable
   pdf_path      text
+  profile_version integer                  -- profile facts used by this variant
+  job_content_hash text                    -- source description used by this variant
+  prompt_version text                      -- tailoring prompt/policy revision
+  evidence_map  json                       -- requirement -> saved candidate fact(s)
+  fit_assessment json                      -- strong | caution | low + explicit gaps
   created_at    timestamp
 )
 
@@ -275,10 +280,15 @@ only queues work and displays its status; it can also save a human letter edit
 without triggering the worker. `pnpm tailor -- --next` claims the oldest queued
 request, creates the variant and local HTML export (plus PDF when Chromium is
 available), and records `completed` with `variant_id` or `failed` with an error.
-A queued or running request for the same job is coalesced. The worker selects
-only stored profile facts; its cover letter starts grounded in those facts and
-remains editable in the UI. Saving an edit updates both the variant and any
-attached application. The resume renderer keeps the existing Harvard layout.
+A queued or running request for the same job is coalesced. The worker creates a
+stored evidence map before drafting a target-role headline, summary, focused
+projects and skills, selected experience bullets, and a job-aware cover letter.
+It selects and reframes saved facts but never changes historical titles, dates,
+or unsupported qualifications. Every variant records its profile version, job
+content hash, prompt version, evidence map, and fit assessment; a changed
+profile, source description, or material set makes an existing form checklist
+stale. The resume renderer keeps the existing Harvard layout
+([ADR-0012](adr/0012-evidence-grounded-tailoring.md)).
 
 ## Dedup strategy
 

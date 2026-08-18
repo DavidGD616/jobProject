@@ -15,18 +15,22 @@ export function updateResumeVariantCoverLetter(input: {
   const database = input.database ?? db;
   const now = input.now ?? new Date();
   const coverLetter = input.coverLetter.trim() || null;
-  const variant = database
-    .update(resumeVariants)
-    .set({ coverLetter })
-    .where(eq(resumeVariants.id, input.variantId))
-    .returning()
-    .get();
-  if (!variant) throw new Error(`Resume variant ${input.variantId} not found`);
+  return database.transaction((tx) => {
+    const variant = tx
+      .update(resumeVariants)
+      .set({ coverLetter })
+      .where(eq(resumeVariants.id, input.variantId))
+      .returning()
+      .get();
+    if (!variant) throw new Error(`Resume variant ${input.variantId} not found`);
 
-  database
-    .update(applications)
-    .set({ coverLetter, updatedAt: now })
-    .where(eq(applications.resumeVariantId, input.variantId))
-    .run();
-  return variant;
+    // Keep the live attachment consistent. Existing prepared runs retain their
+    // prior hash and will consequently be recognized as stale.
+    tx
+      .update(applications)
+      .set({ coverLetter, updatedAt: now })
+      .where(eq(applications.resumeVariantId, input.variantId))
+      .run();
+    return variant;
+  });
 }

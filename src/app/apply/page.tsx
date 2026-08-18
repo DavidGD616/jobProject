@@ -1,8 +1,14 @@
 import Link from "next/link";
 
-import { listApplicationRuns } from "@/apply";
+import {
+  isApplicationRunStale,
+  listApplicationRuns,
+  type ApplicationMaterialSnapshot,
+} from "@/apply";
 import { displayCompanyName } from "@/db";
+import { ensureActiveProfile } from "@/matching";
 import { listApplications } from "@/tracking";
+import { listResumeVariants } from "@/tailor";
 
 import { WorkflowCallout } from "../_components/workflow-callout";
 import {
@@ -14,6 +20,7 @@ import {
   primaryButton,
   secondaryButton,
   tag,
+  warningTag,
   workspaceShell,
 } from "../_components/ui";
 import { prepareApplicationAction } from "../actions";
@@ -30,6 +37,7 @@ type StoredPlan = {
   fields?: Array<{ label: string; value: string | null; required: boolean; source: string }>;
   instructions?: string[];
   customQuestions?: string[];
+  materialSnapshot?: ApplicationMaterialSnapshot;
 };
 
 function planFromRun(run: { fields: unknown }): StoredPlan {
@@ -47,6 +55,7 @@ function readableStatus(status: string): string {
 
 export default async function ApplyPage({ searchParams }: ApplyPageProps) {
   const applications = listApplications();
+  const profile = ensureActiveProfile();
   const query = await searchParams;
 
   return (
@@ -96,12 +105,18 @@ export default async function ApplyPage({ searchParams }: ApplyPageProps) {
                   const runs = listApplicationRuns(application.id);
                   const visibleRuns = runs.slice(-2).reverse();
                   const latestRun = visibleRuns[0];
+                  const currentVariant = application.resumeVariantId === null
+                    ? null
+                    : listResumeVariants(application.job.id).find((variant) => variant.id === application.resumeVariantId) ?? null;
+                  const latestRunIsStale = latestRun
+                    ? isApplicationRunStale(latestRun, currentVariant, application.job, profile)
+                    : false;
                   return (
                     <li key={application.id}>
                       <article className={card}>
                         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                           <div>
-                            <div className="flex flex-wrap items-center gap-2"><span className={tag}>{readableStatus(application.status)} application</span>{latestRun ? <span className={positiveTag}>Checklist ready</span> : <span className={tag}>No checklist yet</span>}</div>
+                            <div className="flex flex-wrap items-center gap-2"><span className={tag}>{readableStatus(application.status)} application</span>{latestRun ? <span className={latestRunIsStale ? warningTag : positiveTag}>{latestRunIsStale ? "Checklist needs refresh" : "Checklist ready"}</span> : <span className={tag}>No checklist yet</span>}</div>
                             <Link className="mt-3 block font-serif text-2xl font-semibold tracking-[-0.035em] text-[var(--ink)] transition hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rust)]" href={`/jobs/${application.job.id}`}>{application.job.title}</Link>
                             <p className="mt-1 text-sm font-semibold text-[var(--ink-soft)]">{displayCompanyName(application.company.name)}</p>
                           </div>
@@ -110,12 +125,12 @@ export default async function ApplyPage({ searchParams }: ApplyPageProps) {
 
                         <div className="mt-5 flex flex-col gap-3 border-t border-[color:color-mix(in_srgb,var(--ink)_10%,transparent)] pt-5 sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            <p className="text-sm font-semibold text-[var(--ink)]">{latestRun ? "Refresh the checklist if your details changed" : "Start by building a form checklist"}</p>
-                            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">It lists known fields and flags anything the application still needs from you.</p>
+                            <p className="text-sm font-semibold text-[var(--ink)]">{latestRun ? latestRunIsStale ? "Refresh this stale checklist before using it" : "Refresh the checklist if your details changed" : "Start by building a form checklist"}</p>
+                            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{latestRunIsStale ? "Its attached materials, source job details, or profile no longer match the saved preparation record." : "It lists known fields and flags anything the application still needs from you."}</p>
                           </div>
                           <form action={prepareApplicationAction}>
                             <input name="application_id" type="hidden" value={application.id} />
-                            <button className={primaryButton} type="submit">{latestRun ? "Refresh checklist" : "Build checklist"}</button>
+                            <button className={primaryButton} type="submit">{latestRun ? latestRunIsStale ? "Refresh checklist now" : "Refresh checklist" : "Build checklist"}</button>
                           </form>
                         </div>
 
@@ -126,15 +141,23 @@ export default async function ApplyPage({ searchParams }: ApplyPageProps) {
                               const fields = plan.fields ?? [];
                               const instructions = plan.instructions ?? [];
                               const customQuestions = plan.customQuestions ?? [];
+                              const runIsStale = runIndex === 0 && latestRunIsStale;
                               return (
                                 <section className="rounded-2xl border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_65%,transparent)] p-4 sm:p-5" key={run.id}>
                                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
-                                      <p className="text-sm font-semibold text-[var(--ink)]">{runIndex === 0 ? "Current checklist" : "Previous checklist"}</p>
+                                      <p className="text-sm font-semibold text-[var(--ink)]">{runIndex === 0 ? runIsStale ? "Current checklist — refresh required" : "Current checklist" : "Previous checklist"}</p>
                                       <p className="mt-0.5 text-xs text-[var(--muted)]">Prepared {dateLabel(run.finishedAt ?? run.startedAt)}</p>
                                     </div>
-                                    <span className={positiveTag}>Review before submitting</span>
+                                    <span className={runIsStale ? warningTag : positiveTag}>{runIsStale ? "Out of date" : "Review before submitting"}</span>
                                   </div>
+
+                                  {runIsStale ? (
+                                    <div className="mt-4 rounded-xl border border-[#d9b85d] bg-[#fff9e5] px-4 py-3 text-sm leading-6 text-[#624e10]" role="alert">
+                                      <p className="font-semibold">Refresh this checklist before you copy any answers into the application form.</p>
+                                      <p className="mt-1 text-xs leading-5">{plan.materialSnapshot ? "A newer resume or letter, job description, or profile version no longer matches the checklist you are viewing." : "This older checklist did not record a material snapshot, so it cannot be verified against your current resume, job description, and profile."}</p>
+                                    </div>
+                                  ) : null}
 
                                   <div className="mt-5 grid gap-2" aria-label="Suggested form values">
                                     {fields.length > 0 ? fields.map((item) => (

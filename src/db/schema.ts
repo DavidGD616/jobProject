@@ -204,6 +204,8 @@ export type ResumeProfileJson = {
   portfolioUrl?: string;
   headline?: string;
   summary?: string;
+  /** A capped role-specific subset for a variant; `profiles.skills` stays canonical. */
+  skills?: string[];
   interests?: string[];
   experience?: Array<{
     company: string;
@@ -213,7 +215,32 @@ export type ResumeProfileJson = {
     bullets: string[];
   }>;
   education?: Array<{ school: string; degree?: string; field?: string }>;
-  projects?: Array<{ name: string; description: string; technologies?: string[] }>;
+  projects?: Array<{
+    name: string;
+    description: string;
+    technologies?: string[];
+    /** Truthful, user-supplied project accomplishments for role-specific selection. */
+    bullets?: string[];
+  }>;
+};
+
+/** A traceable fact used to support a tailored resume or cover letter. */
+export type TailoringEvidence = {
+  requirement: string;
+  source: "experience" | "project" | "skill";
+  label: string;
+  experienceIndex?: number;
+  bulletIndex?: number;
+  projectIndex?: number;
+  skill?: string;
+};
+
+/** An honest fit signal recorded with a tailored material set. */
+export type TailorFitAssessment = {
+  level: "strong" | "caution" | "low";
+  summary: string;
+  gaps: string[];
+  evidenceCount: number;
 };
 
 export type ProfilePreferences = {
@@ -313,6 +340,12 @@ export const resumeVariants = sqliteTable(
     resumeJson: text("resume_json", { mode: "json" }).$type<ResumeProfileJson>().notNull(),
     coverLetter: text("cover_letter"),
     pdfPath: text("pdf_path"),
+    /** Material provenance allows preparation runs to detect stale attachments. */
+    profileVersion: integer("profile_version"),
+    jobContentHash: text("job_content_hash"),
+    promptVersion: text("prompt_version"),
+    evidenceMap: text("evidence_map", { mode: "json" }).$type<TailoringEvidence[]>(),
+    fitAssessment: text("fit_assessment", { mode: "json" }).$type<TailorFitAssessment>(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [index("resume_variants_job_idx").on(table.jobId, table.createdAt)],

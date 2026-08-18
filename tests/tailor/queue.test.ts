@@ -105,6 +105,11 @@ test("editing a variant letter keeps the currently attached application in sync"
       resumeJson: { experience: [], education: [], projects: [] },
       coverLetter: "Initial draft",
       pdfPath: null,
+      profileVersion: 1,
+      jobContentHash: job.contentHash,
+      promptVersion: "tailor-v3",
+      evidenceMap: [{ requirement: "Build software", source: "skill", label: "TypeScript", skill: "typescript" }],
+      fitAssessment: { level: "strong", summary: "Relevant evidence is present.", gaps: [], evidenceCount: 1 },
       createdAt: now,
     }).returning().get()!;
     db.insert(applications).values({
@@ -122,6 +127,9 @@ test("editing a variant letter keeps the currently attached application in sync"
       now: new Date(now.valueOf() + 1_000),
     });
     assert.equal(edited.coverLetter, "Human-reviewed letter.");
+    assert.equal(edited.profileVersion, 1);
+    assert.equal(edited.jobContentHash, job.contentHash);
+    assert.deepEqual(edited.evidenceMap, [{ requirement: "Build software", source: "skill", label: "TypeScript", skill: "typescript" }]);
     assert.equal(db.select().from(applications).get()?.coverLetter, "Human-reviewed letter.");
   } finally {
     sqlite.close();

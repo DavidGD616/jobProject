@@ -50,7 +50,7 @@ export interface PrintableResume {
   interests?: string[];
   experience?: Array<{ company: string; title: string; startDate?: string; endDate?: string; bullets: string[] }>;
   education?: Array<{ school: string; degree?: string; field?: string }>;
-  projects?: Array<{ name: string; description: string; technologies?: string[] }>;
+  projects?: Array<{ name: string; description: string; technologies?: string[]; bullets?: string[] }>;
 }
 
 function contactLine(resume: PrintableResume): string {
@@ -68,7 +68,7 @@ function renderExperience(resume: PrintableResume): string {
 }
 
 function renderProjects(resume: PrintableResume): string {
-  return (resume.projects ?? []).map((item) => `<article class="project"><h3>${inlineText(item.name)}</h3><p>${inlineText(item.description)}</p>${item.technologies?.length ? `<p class="techline"><span>Built with</span> ${item.technologies.map(inlineText).join(`<span class="tech-dot">·</span>`)}</p>` : ""}</article>`).join("");
+  return (resume.projects ?? []).map((item) => `<article class="project"><h3>${inlineText(item.name)}</h3><p>${inlineText(item.description)}</p>${bulletList(item.bullets ?? [], "resume-bullets")}${item.technologies?.length ? `<p class="techline"><span>Built with</span> ${item.technologies.map(inlineText).join(`<span class="tech-dot">·</span>`)}</p>` : ""}</article>`).join("");
 }
 
 function renderEducation(resume: PrintableResume): string {

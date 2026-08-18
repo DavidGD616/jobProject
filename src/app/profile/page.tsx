@@ -150,7 +150,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
                 </div>
                 <span className={tag}>Advanced</span>
               </div>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--muted)]">This structured resume data is the source for all role-specific materials. Keep every bullet truthful; the app can rearrange or rephrase facts, but it will not create new ones.</p>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--muted)]">This structured resume data is the source for all role-specific materials. Keep every bullet truthful; the app can rearrange or rephrase facts, but it will not create new ones. Projects can also include an optional <code>bullets</code> array for their concrete proof points.</p>
               <details className="mt-5 rounded-xl border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_62%,transparent)] p-4">
                 <summary className="cursor-pointer text-sm font-semibold text-[var(--ink)]">View or edit structured resume data</summary>
                 <p className="mt-2 text-xs leading-5 text-[var(--muted)]">This needs valid JSON. If you do not need to change your experience, you can leave it closed.</p>

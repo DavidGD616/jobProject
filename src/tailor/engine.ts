@@ -6,18 +6,61 @@ import { z } from "zod";
 
 import { db, displayCompanyName } from "@/db";
 import { applications, companies, jobs, resumeVariants } from "@/db/schema";
-import type { Profile, ResumeProfileJson } from "@/db/schema";
+import type { Profile } from "@/db/schema";
 import type { JobHuntDatabase } from "@/db/types";
 import { runStructured } from "@/llm";
+import type { LlmProvider } from "@/llm";
 
+import {
+  buildGroundedTailoringPlan,
+  groundedCoverLetter,
+  mergeSelections,
+  planWithSelections,
+  resumeFromPlan,
+  TAILOR_PROMPT_VERSION,
+} from "./grounding";
 import { renderPdfFromHtml, resumeToHtml } from "./pdf";
 
-const tailorResponseSchema = z.object({
-  selected_bullets: z.array(z.object({
-    experience_index: z.number().int().min(0),
-    bullet_indices: z.array(z.number().int().min(0)),
-  })).default([]),
-});
+const selectedBulletsSchema = z.object({
+  experience_index: z.number().int().min(0),
+  bullet_indices: z.array(z.number().int().min(0)).max(8),
+}).strict();
+
+const selectedProjectBulletsSchema = z.object({
+  project_index: z.number().int().min(0),
+  bullet_indices: z.array(z.number().int().min(0)).max(8),
+}).strict();
+
+const llmEvidenceSchema = z.object({
+  requirement: z.string().trim().min(1).max(160),
+  source: z.enum(["experience", "project", "skill"]),
+  label: z.string().trim().min(1).max(1_000),
+  // Native Codex object schemas require every property to be required. Null
+  // represents an inapplicable source field rather than an omitted key.
+  experience_index: z.number().int().min(0).nullable(),
+  bullet_index: z.number().int().min(0).nullable(),
+  project_index: z.number().int().min(0).nullable(),
+  skill: z.string().trim().min(1).max(160).nullable(),
+}).strict();
+
+/**
+ * The model can propose source references and an optional narrative. The
+ * engine only applies valid source references: prose is generated from those
+ * source facts deterministically, so an LLM cannot invent claims or edit a
+ * historic job title/date.
+ */
+export const tailorResponseSchema = z.object({
+  selected_bullets: z.array(selectedBulletsSchema),
+  project_indices: z.array(z.number().int().min(0)).max(8),
+  selected_project_bullets: z.array(selectedProjectBulletsSchema),
+  selected_skills: z.array(z.string().trim().min(1).max(160)).max(20),
+  headline: z.string().trim().min(1).max(180).nullable(),
+  summary: z.string().trim().min(1).max(1_200).nullable(),
+  cover_letter: z.string().trim().min(1).max(4_000).nullable(),
+  evidence: z.array(llmEvidenceSchema).max(24),
+}).strict();
+
+const tailorOutputSchema = z.toJSONSchema(tailorResponseSchema);
 
 export interface TailoredVariant {
   variant: typeof resumeVariants.$inferSelect;
@@ -26,90 +69,53 @@ export interface TailoredVariant {
   llmUsed: boolean;
 }
 
-const ignoredTerms = new Set([
-  "about", "after", "also", "and", "are", "been", "being", "but", "can", "company", "for", "from", "have", "into", "its", "more", "our", "role", "that", "the", "their", "this", "through", "with", "will", "you", "your",
-]);
-
-function terms(text: string): Set<string> {
-  return new Set(text.toLowerCase().replace(/&[a-z]+;/g, " ").replace(/[^a-z0-9+#./-]+/g, " ").split(/\s+/).filter((term) => term.length > 2 && !ignoredTerms.has(term)));
-}
-
-function termsOverlap(left: string, right: string): boolean {
-  return left === right || (left.length >= 4 && right.length >= 4 && (left.startsWith(right) || right.startsWith(left)));
-}
-
-function overlapScore(text: string, jobTerms: Set<string>): number {
-  return [...terms(text)].filter((candidateTerm) => [...jobTerms].some((jobTerm) => termsOverlap(candidateTerm, jobTerm))).length;
-}
-
-function relevantSkills(skills: readonly string[], jobTerms: Set<string>): string[] {
-  return skills.filter((skill) => overlapScore(skill, jobTerms) > 0).slice(0, 10);
-}
-
-function portfolioFromSummary(resume: ResumeProfileJson): string | undefined {
+function portfolioFromSummary(profile: Profile): string | undefined {
+  const resume = profile.resumeJson;
   if (resume.portfolioUrl) return resume.portfolioUrl;
   return resume.summary?.match(/https?:\/\/[^\s)]+/i)?.[0];
 }
 
-function deterministicResume(resume: ResumeProfileJson, description: string): ResumeProfileJson {
-  const jdTerms = terms(description);
+function printableResume(profile: Profile, resume: Profile["resumeJson"]) {
   return {
     ...resume,
-    projects: [...(resume.projects ?? [])].sort((left, right) => overlapScore(right.description, jdTerms) - overlapScore(left.description, jdTerms)),
-    experience: (resume.experience ?? []).map((experience) => ({
-      ...experience,
-      bullets: [...experience.bullets].sort((left, right) => {
-        const score = (bullet: string) => [...terms(bullet)].filter((term) => jdTerms.has(term)).length;
-        return score(right) - score(left);
-      }).slice(0, 5),
-    })),
-  };
-}
-
-function groundedCoverLetter(profile: Profile, companyName: string, jobTitle: string): string {
-  const firstExperience = profile.resumeJson.experience?.[0];
-  const firstBullet = firstExperience?.bullets[0];
-  const evidence = firstExperience && firstBullet
-    ? `In my work as ${firstExperience.title} at ${firstExperience.company}, I ${firstBullet.charAt(0).toLowerCase()}${firstBullet.slice(1)}`
-    : "My attached resume contains the relevant experience and projects for this role";
-  return `Dear ${companyName} hiring team,\n\nI am interested in the ${jobTitle} role. ${evidence}. I would welcome the chance to discuss how that experience could support the team.\n\nThank you,\n${profile.resumeJson.name ?? "[Your name]"}`;
-}
-
-function printableResume(resume: ResumeProfileJson, profile: Profile, description: string) {
-  const jobTerms = terms(description);
-  const matched = relevantSkills(profile.skills, jobTerms);
-  return {
-    ...resume,
-    portfolioUrl: portfolioFromSummary(resume),
-    skills: [...matched, ...profile.skills.filter((skill) => !matched.includes(skill))],
+    portfolioUrl: portfolioFromSummary(profile),
+    // `resume.skills` is a capped, role-specific subset persisted on the
+    // variant. Do not append every profile skill here or the PDF quietly
+    // becomes generic again.
+    skills: resume.skills ?? [],
     interests: resume.interests,
   };
 }
 
 function llmPrompt(profile: Profile, companyName: string, jobTitle: string, description: string): string {
+  const resume = profile.resumeJson;
   return [
-    "Tailor a resume draft using only the supplied candidate facts. Do not invent employers, metrics, dates, technologies, or outcomes.",
-    "Return JSON with selected_bullets only. Each selection must contain valid source experience and bullet indices; never return rewritten prose.",
-    `Candidate: ${JSON.stringify(profile.resumeJson)}`,
-    `Skills: ${JSON.stringify(profile.skills)}`,
-    `Target company: ${companyName}; role: ${jobTitle}`,
+    "Create a fact-grounded tailoring PLAN for a resume and cover letter.",
+    "Use only the candidate facts supplied below. Never invent employers, job titles, dates, metrics, technologies, outcomes, clearance, citizenship, or years of experience.",
+    "Do not edit historic experience titles, employers, dates, or prose. Select only source indices and exact skill names supplied below. Multiple selected_bullets objects for the same experience are allowed and will be merged.",
+    "Choose 2–3 relevant project_indices, up to 15 exact selected_skills, and relevant experience/project bullet indices. An experience bullet must directly support a named skill or the target role; do not select generic production/design facts for a software role when stronger project evidence exists.",
+    "Return every JSON key required by the schema. Use empty arrays when no source is selected, and null for headline, summary, or cover_letter when no safe suggestion exists. headline, summary, cover_letter, and evidence are suggestions only; they must contain no unsupported claim, and the local engine independently validates source references and generates final factual prose.",
+    `Target company: ${companyName}`,
+    `Target role: ${jobTitle}`,
     `Job description: ${description.slice(0, 18_000)}`,
+    `Candidate resume facts (indices are zero-based): ${JSON.stringify(resume)}`,
+    `Canonical candidate skills (return exact strings only): ${JSON.stringify(profile.skills)}`,
+    `Saved title aliases: ${JSON.stringify(profile.titleAliases)}`,
   ].join("\n\n");
 }
 
-function applySelection(resume: ResumeProfileJson, selected: z.infer<typeof tailorResponseSchema>["selected_bullets"]): ResumeProfileJson {
-  if (selected.length === 0) return resume;
-  const experience = resume.experience ?? [];
+function sourceSelectionsFromLlm(value: z.infer<typeof tailorResponseSchema>) {
   return {
-    ...resume,
-    experience: experience.map((item, experienceIndex) => {
-      const selection = selected.find((value) => value.experience_index === experienceIndex);
-      if (!selection) return item;
-      const bullets = selection.bullet_indices
-        .map((bulletIndex) => item.bullets[bulletIndex])
-        .filter((bullet): bullet is string => Boolean(bullet));
-      return bullets.length > 0 ? { ...item, bullets } : item;
-    }),
+    projectIndices: value.project_indices,
+    projectBullets: value.selected_project_bullets.map((selection) => ({
+      projectIndex: selection.project_index,
+      bulletIndices: selection.bullet_indices,
+    })),
+    experienceBullets: value.selected_bullets.map((selection) => ({
+      experienceIndex: selection.experience_index,
+      bulletIndices: selection.bullet_indices,
+    })),
+    skills: value.selected_skills,
   };
 }
 
@@ -118,38 +124,77 @@ export async function createTailoredVariant(input: {
   profile: Profile;
   database?: JobHuntDatabase;
   allowLlm?: boolean;
+  providers?: readonly LlmProvider[];
   now?: Date;
 }): Promise<TailoredVariant> {
   const database = input.database ?? db;
   const now = input.now ?? new Date();
-  const row = database.select({ job: jobs, company: companies }).from(jobs).innerJoin(companies, eq(jobs.companyId, companies.id)).where(eq(jobs.id, input.jobId)).get();
+  const row = database
+    .select({ job: jobs, company: companies })
+    .from(jobs)
+    .innerJoin(companies, eq(jobs.companyId, companies.id))
+    .where(eq(jobs.id, input.jobId))
+    .get();
   if (!row) throw new Error(`Job ${input.jobId} not found`);
+
   const companyName = displayCompanyName(row.company.name);
-  let resume = deterministicResume(input.profile.resumeJson, row.job.description);
-  const coverLetter = groundedCoverLetter(input.profile, companyName, row.job.title);
+  let plan = buildGroundedTailoringPlan({
+    profile: input.profile,
+    jobTitle: row.job.title,
+    description: row.job.description,
+  });
   let llmUsed = false;
   if (input.allowLlm) {
     const result = await runStructured({
       task: "tailor",
       prompt: llmPrompt(input.profile, companyName, row.job.title, row.job.description),
-      promptVersion: "tailor-v2",
+      promptVersion: TAILOR_PROMPT_VERSION,
       schema: tailorResponseSchema,
+      outputSchema: tailorOutputSchema,
+      providers: input.providers,
       database,
       now: () => now,
     });
     if (result.value) {
-      resume = applySelection(resume, result.value.selected_bullets);
+      // Source indices are validated against the original profile here, before
+      // any target-role ordering happens. This fixes the old index drift bug
+      // and merges every selection for the same experience entry.
+      const selections = mergeSelections(plan, input.profile, sourceSelectionsFromLlm(result.value));
+      plan = planWithSelections({
+        profile: input.profile,
+        jobTitle: row.job.title,
+        plan,
+        selections,
+      });
       llmUsed = true;
     }
   }
-  const printable = printableResume(resume, input.profile, row.job.description);
+
+  const resume = resumeFromPlan({
+    profile: input.profile,
+    jobTitle: row.job.title,
+    plan,
+  });
+  const coverLetter = groundedCoverLetter({
+    profile: input.profile,
+    companyName,
+    jobTitle: row.job.title,
+    plan,
+  });
+  const printable = printableResume(input.profile, resume);
   const variant = database.insert(resumeVariants).values({
     jobId: input.jobId,
     resumeJson: resume,
     coverLetter,
     pdfPath: null,
+    profileVersion: input.profile.version,
+    jobContentHash: row.job.contentHash,
+    promptVersion: TAILOR_PROMPT_VERSION,
+    evidenceMap: plan.evidenceMap,
+    fitAssessment: plan.fitAssessment,
     createdAt: now,
   }).returning().get()!;
+
   const exportDirectory = resolve(/* turbopackIgnore: true */ process.env.EXPORT_DIR ?? "data/exports");
   await mkdir(exportDirectory, { recursive: true });
   const htmlPath = join(exportDirectory, `resume-variant-${variant.id}.html`);
@@ -157,12 +202,19 @@ export async function createTailoredVariant(input: {
   await writeFile(htmlPath, html, "utf8");
   const pdfPath = join(exportDirectory, `resume-variant-${variant.id}.pdf`);
   const renderedPdf = await renderPdfFromHtml({ html, outputPath: pdfPath });
-  database.update(resumeVariants).set({ pdfPath: renderedPdf }).where(eq(resumeVariants.id, variant.id)).run();
+  const finalVariant = database.update(resumeVariants)
+    .set({ pdfPath: renderedPdf })
+    .where(eq(resumeVariants.id, variant.id))
+    .returning()
+    .get()!;
   const application = database.select().from(applications).where(eq(applications.jobId, input.jobId)).get();
   if (application) {
-    database.update(applications).set({ resumeVariantId: variant.id, coverLetter, updatedAt: now }).where(eq(applications.id, application.id)).run();
+    database.update(applications)
+      .set({ resumeVariantId: variant.id, coverLetter, updatedAt: now })
+      .where(eq(applications.id, application.id))
+      .run();
   }
-  return { variant: { ...variant, pdfPath: renderedPdf }, htmlPath, pdfPath: renderedPdf, llmUsed };
+  return { variant: finalVariant, htmlPath, pdfPath: renderedPdf, llmUsed };
 }
 
 export function listResumeVariants(jobId: number, database: JobHuntDatabase = db) {
