@@ -1,6 +1,6 @@
 # 05 — Roadmap
 
-**Status:** Current · **Last updated:** 2026-08-17
+**Status:** Current · **Last updated:** 2026-08-18
 
 Each phase ships something usable. Do not start a phase before the previous one's exit criteria are met.
 
@@ -80,7 +80,7 @@ Small, unglamorous, high daily value. Do it before tailoring — it pays off fro
 
 Tier C, first half.
 
-- ✅ Evidence-grounded target headline, summary, project/skill focus, and bullet selection from real facts only
+- ✅ Evidence-grounded target headline, summary, project/skill focus, and complete work-history retention from real facts only; source bullets are prioritized, never deleted, and user-featured projects lead ([ADR-0013](adr/0013-complete-work-history-tailoring.md))
 - ✅ Job-aware, evidence-grounded cover-letter draft, human-edited in the UI
 - ✅ HTML and optional local Chromium PDF rendering from `resume_json`
 - ✅ `resume_variants` — every export is tied to its destination with profile/job/prompt provenance and a visible fit/gap explanation

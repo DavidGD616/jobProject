@@ -17,7 +17,8 @@ One file per decision. Numbered, immutable once `Accepted`.
 | [0009](0009-local-browser-automation.md) | Local browser automation, agent-generated selectors | Accepted |
 | [0010](0010-company-discovery.md) | The company list is derived, not curated | Accepted |
 | [0011](0011-profile-guided-explore-candidates.md) | Profile-guided Explore candidates | Accepted |
-| [0012](0012-evidence-grounded-tailoring.md) | Evidence-grounded application tailoring | Accepted |
+| [0012](0012-evidence-grounded-tailoring.md) | Evidence-grounded application tailoring | Superseded by [0013](0013-complete-work-history-tailoring.md) |
+| [0013](0013-complete-work-history-tailoring.md) | Complete work-history tailoring | Accepted |
 
 ## Rules
 

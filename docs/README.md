@@ -17,7 +17,7 @@ Agent instructions are in [AGENTS.md](../AGENTS.md) at the repo root — canonic
 
 ## Constraints that shape everything
 
-Six accepted decisions do more to determine the design than any feature does. Read them before proposing changes:
+Seven accepted decisions do more to determine the design than any feature does. Read them before proposing changes:
 
 - [ADR-0006](adr/0006-local-only-execution.md) — runs only on this machine, never deployed
 - [ADR-0007](adr/0007-llm-via-cli-subprocess.md) — LLM via installed CLIs (`claude`, `codex`, `opencode`), no API keys
@@ -25,6 +25,7 @@ Six accepted decisions do more to determine the design than any feature does. Re
 - [ADR-0009](adr/0009-local-browser-automation.md) — local Playwright only; agent writes selectors once, script replays them
 - [ADR-0010](adr/0010-company-discovery.md) — the company list is discovered, never hand-written
 - [ADR-0011](adr/0011-profile-guided-explore-candidates.md) — Explore is broad and profile-guided; source snapshots remain complete
+- [ADR-0013](adr/0013-complete-work-history-tailoring.md) — tailoring retains complete work history and uses explicit project presentation facts
 
 ## Decisions
 

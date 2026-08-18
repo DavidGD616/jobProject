@@ -1,6 +1,6 @@
 # 02 — Data model
 
-**Status:** Current · **Last updated:** 2026-08-17
+**Status:** Current · **Last updated:** 2026-08-18
 **Engine:** SQLite + FTS5, WAL mode ([ADR-0002](adr/0002-storage-engine.md)).
 
 Types below are written generically. In SQLite, `text[]` is stored as a JSON array and `json` as `TEXT`. Anything that needs filtering must be a real column, never a key inside a JSON blob.
@@ -245,7 +245,7 @@ Daily LLM cost is therefore ~6 invocations, not 10,000. Never add an "enrich eve
 
 **`extraction_rules.fail_count` is the self-healing trigger.** Consecutive zero-row runs mean the page was redesigned, not that the company has no openings. Regenerate the selectors when it crosses the threshold, and log it.
 
-**`resume_json` is structured, not a blob.** This single choice is what makes Phase 4 possible — tailoring selects and reweights bullets, PDF rendering is a pure function of the structure. A stored PDF supports neither.
+**`resume_json` is structured, not a blob.** This single choice is what makes Phase 4 possible — tailoring reorders source bullets while PDF rendering is a pure function of the structure. A stored PDF supports neither. Work-history entries carry the canonical employer title, dates, and bullets; every tailored variant retains them all. The optional `projects[].featured` flag is user-authored presentation metadata: featured projects are included first, and neither it nor recency is inferred from array order ([ADR-0013](adr/0013-complete-work-history-tailoring.md)).
 
 **`profile.version` exists to invalidate caches.** Every LLM result and every match row records the profile version that produced it. Without this, editing the resume silently leaves stale scores in place.
 
@@ -281,14 +281,15 @@ without triggering the worker. `pnpm tailor -- --next` claims the oldest queued
 request, creates the variant and local HTML export (plus PDF when Chromium is
 available), and records `completed` with `variant_id` or `failed` with an error.
 A queued or running request for the same job is coalesced. The worker creates a
-stored evidence map before drafting a target-role headline, summary, focused
-projects and skills, selected experience bullets, and a job-aware cover letter.
-It selects and reframes saved facts but never changes historical titles, dates,
-or unsupported qualifications. Every variant records its profile version, job
+stored evidence map before drafting a separate target-role headline, summary,
+focused projects and skills, a complete reordered work history, and a job-aware
+cover letter. It retains every source role, title, date, and bullet; it may
+only prioritize or source-derive wording from saved facts, never create an
+unsupported qualification. Every variant records its profile version, job
 content hash, prompt version, evidence map, and fit assessment; a changed
 profile, source description, or material set makes an existing form checklist
 stale. The resume renderer keeps the existing Harvard layout
-([ADR-0012](adr/0012-evidence-grounded-tailoring.md)).
+([ADR-0013](adr/0013-complete-work-history-tailoring.md)).
 
 ## Dedup strategy
 

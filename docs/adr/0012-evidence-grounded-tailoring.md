@@ -1,6 +1,6 @@
 # ADR-0012 — Evidence-grounded application tailoring
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-0013](0013-complete-work-history-tailoring.md)
 **Date:** 2026-08-18
 
 ## Context
