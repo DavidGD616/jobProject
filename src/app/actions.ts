@@ -32,6 +32,31 @@ function parseJson(formData: FormData, key: string, fallback: unknown): unknown 
   }
 }
 
+/**
+ * The checkbox list is a friendly editor for existing projects. Keep any
+ * project newly added in the advanced JSON untouched so an edit to both
+ * controls cannot quietly erase its explicit presentation metadata.
+ */
+function applyFeaturedProjectSelection(
+  resumeJson: Record<string, unknown>,
+  selectedNames: readonly string[],
+  editableNames: readonly string[],
+): void {
+  const projects = resumeJson.projects;
+  if (!Array.isArray(projects)) return;
+
+  const normalizeName = (value: string) => value.trim().toLowerCase();
+  const selected = new Set(selectedNames.map(normalizeName));
+  const editable = new Set(editableNames.map(normalizeName));
+  resumeJson.projects = projects.map((project) => {
+    if (!project || typeof project !== "object" || Array.isArray(project)) return project;
+    const value = project as Record<string, unknown>;
+    const name = typeof value.name === "string" ? normalizeName(value.name) : "";
+    if (!name || !editable.has(name)) return project;
+    return { ...value, featured: selected.has(name) };
+  });
+}
+
 export async function saveProfileAction(formData: FormData): Promise<void> {
   try {
     const current = ensureActiveProfile(db);
@@ -40,6 +65,13 @@ export async function saveProfileAction(formData: FormData): Promise<void> {
       const value = text(formData, key);
       if (value) resumeJson[key] = value;
       else delete resumeJson[key];
+    }
+    if (formData.has("featured_projects_present")) {
+      applyFeaturedProjectSelection(
+        resumeJson,
+        formData.getAll("featured_projects").map(String),
+        (current.resumeJson.projects ?? []).map((project) => project.name),
+      );
     }
     const skillAliases = parseJson(formData, "skill_aliases", current.skillAliases);
     const remoteTypes = formData.getAll("remote_types").map(String).filter((value) => ["remote", "hybrid", "onsite"].includes(value)) as Array<"remote" | "hybrid" | "onsite">;

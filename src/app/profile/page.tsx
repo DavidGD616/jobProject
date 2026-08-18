@@ -32,6 +32,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
   const profile = ensureActiveProfile();
   const query = await searchParams;
   const preferences = profile.preferences;
+  const priorityProjects = profile.resumeJson.projects ?? [];
 
   return (
     <main className="min-h-screen px-3 py-3 sm:px-6 sm:py-6 lg:px-10 lg:py-8" id="main-content">
@@ -150,10 +151,25 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
                 </div>
                 <span className={tag}>Advanced</span>
               </div>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--muted)]">This structured resume data is the source for all role-specific materials. Keep every bullet truthful; the app can rearrange or rephrase facts, but it will not create new ones. Projects can also include an optional <code>bullets</code> array for their concrete proof points.</p>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--muted)]">This structured resume data is the source for all role-specific materials. Keep every bullet truthful; the app can reorder saved facts, but it will not create new ones. Projects can also include an optional <code>bullets</code> array for their concrete proof points.</p>
+              <input name="featured_projects_present" type="hidden" value="1" />
+              <fieldset className="mt-5 rounded-xl border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_62%,transparent)] p-4">
+                <legend className="px-1 text-sm font-semibold text-[var(--ink)]">Feature the work you want to lead with</legend>
+                <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Choose the project or projects you want treated as featured in tailored resumes. One is usually enough; featured work is placed before role-specific supporting projects.</p>
+                {priorityProjects.length > 0 ? (
+                  <div className="mt-3 grid gap-2">
+                    {priorityProjects.map((project, index) => (
+                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[color:color-mix(in_srgb,var(--ink)_10%,transparent)] bg-[var(--paper)] px-3 py-3 text-sm text-[var(--ink-soft)]" key={`${project.name}-${index}`}>
+                        <input className="mt-0.5 size-4 shrink-0 accent-[var(--rust)]" defaultChecked={Boolean(project.featured)} name="featured_projects" type="checkbox" value={project.name} />
+                        <span><span className="font-semibold text-[var(--ink)]">{project.name}</span><span className="mt-0.5 block text-xs leading-5 text-[var(--muted)]">{project.featured ? "Featured now · shown first when relevant" : "Available as a role-specific supporting project"}</span></span>
+                      </label>
+                    ))}
+                  </div>
+                ) : <p className="mt-3 rounded-lg bg-[color:color-mix(in_srgb,var(--ink)_4%,transparent)] px-3 py-2.5 text-xs leading-5 text-[var(--muted)]">Add a project in the structured resume data below, then you can select it here.</p>}
+              </fieldset>
               <details className="mt-5 rounded-xl border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_62%,transparent)] p-4">
                 <summary className="cursor-pointer text-sm font-semibold text-[var(--ink)]">View or edit structured resume data</summary>
-                <p className="mt-2 text-xs leading-5 text-[var(--muted)]">This needs valid JSON. If you do not need to change your experience, you can leave it closed.</p>
+                <p className="mt-2 text-xs leading-5 text-[var(--muted)]">This needs valid JSON. If you do not need to change your experience, you can leave it closed. The selection above manages <code>featured</code> for existing projects; if you edit JSON directly, use <code>&quot;featured&quot;: true</code> only for a project you genuinely want to lead with. You can optionally record a known completion month as <code>&quot;completedAt&quot;: &quot;YYYY-MM&quot;</code>; the app never guesses that date.</p>
                 <textarea aria-label="Structured resume JSON" className={`${field} mt-4 min-h-[28rem] resize-y font-mono text-xs leading-5`} defaultValue={JSON.stringify(profile.resumeJson, null, 2)} name="resume_json" />
               </details>
             </section>

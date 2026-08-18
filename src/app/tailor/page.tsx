@@ -103,6 +103,103 @@ function framingStatus(value: string | undefined, profileValue: string | undefin
   return value === profileValue ? "Kept from your profile" : "Adjusted for this role";
 }
 
+type ResumeExperience = NonNullable<Profile["resumeJson"]["experience"]>[number];
+type PrioritizedProject = NonNullable<Profile["resumeJson"]["projects"]>[number];
+
+type WorkHistoryReview = {
+  source: ResumeExperience;
+  tailored: ResumeExperience | undefined;
+  sourceBulletIndices: Array<number | null>;
+  matchedBulletCount: number;
+  sourceIndex: number;
+  tailoredIndex: number | null;
+  titleRetained: boolean;
+};
+
+function factKey(value: string | undefined): string {
+  return (value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+function exactRoleMatch(source: ResumeExperience, candidate: ResumeExperience): boolean {
+  return factKey(source.company) === factKey(candidate.company)
+    && factKey(source.title) === factKey(candidate.title)
+    && factKey(source.startDate) === factKey(candidate.startDate)
+    && factKey(source.endDate) === factKey(candidate.endDate);
+}
+
+function sameEmployment(source: ResumeExperience, candidate: ResumeExperience): boolean {
+  return factKey(source.company) === factKey(candidate.company)
+    && factKey(source.startDate) === factKey(candidate.startDate)
+    && factKey(source.endDate) === factKey(candidate.endDate);
+}
+
+function sourceBulletIndices(sourceBullets: readonly string[], tailoredBullets: readonly string[]): Array<number | null> {
+  const remainingIndices = new Map<string, number[]>();
+  sourceBullets.forEach((bullet, index) => {
+    const key = factKey(bullet);
+    remainingIndices.set(key, [...(remainingIndices.get(key) ?? []), index + 1]);
+  });
+
+  return tailoredBullets.map((bullet) => remainingIndices.get(factKey(bullet))?.shift() ?? null);
+}
+
+function buildWorkHistoryReview(source: readonly ResumeExperience[], tailored: readonly ResumeExperience[]): WorkHistoryReview[] {
+  const consumedTailoredIndices = new Set<number>();
+
+  return source.map((sourceRole, sourceIndex) => {
+    const exactIndex = tailored.findIndex((candidate, index) => !consumedTailoredIndices.has(index) && exactRoleMatch(sourceRole, candidate));
+    const employmentIndex = tailored.findIndex((candidate, index) => !consumedTailoredIndices.has(index) && sameEmployment(sourceRole, candidate));
+    const tailoredIndex = exactIndex >= 0 ? exactIndex : employmentIndex;
+    const tailoredRole = tailoredIndex >= 0 ? tailored[tailoredIndex] : undefined;
+    if (tailoredIndex >= 0) consumedTailoredIndices.add(tailoredIndex);
+
+    const indices = sourceBulletIndices(sourceRole.bullets, tailoredRole?.bullets ?? []);
+    return {
+      source: sourceRole,
+      tailored: tailoredRole,
+      sourceBulletIndices: indices,
+      matchedBulletCount: indices.filter((index) => index !== null).length,
+      sourceIndex,
+      tailoredIndex: tailoredIndex >= 0 ? tailoredIndex : null,
+      titleRetained: tailoredRole ? factKey(sourceRole.title) === factKey(tailoredRole.title) : false,
+    };
+  });
+}
+
+function sequenceLabel(indices: readonly (number | null)[], emptyLabel: string): string {
+  if (indices.length === 0) return emptyLabel;
+  const visible = indices.slice(0, 6).map((index) => index === null ? "new wording" : `#${index}`);
+  const overflow = indices.length - visible.length;
+  return `${visible.join(" → ")}${overflow > 0 ? ` +${overflow}` : ""}`;
+}
+
+function historyStatus(review: WorkHistoryReview): { label: string; className: string } {
+  if (!review.tailored) return { label: "Role missing — review", className: dangerTag };
+  if (!review.titleRetained) return { label: "Title changed — review", className: dangerTag };
+
+  const sourceCount = review.source.bullets.length;
+  const tailoredCount = review.tailored.bullets.length;
+  const sameBulletSet = review.matchedBulletCount === sourceCount && tailoredCount === sourceCount;
+  if (sameBulletSet) {
+    const originalOrder = review.sourceBulletIndices.every((index, position) => index === position + 1);
+    return { label: originalOrder ? "All saved bullets · original order" : "All saved bullets · reordered", className: positiveTag };
+  }
+
+  if (sourceCount > 0 && review.matchedBulletCount === 0) return { label: `0 of ${sourceCount} source bullets traced`, className: dangerTag };
+  return { label: `${review.matchedBulletCount} of ${sourceCount} source bullets traced`, className: warningTag };
+}
+
+function projectPlacement(project: PrioritizedProject, tailoredIndex: number): { label: string; className: string } {
+  if (project.featured) {
+    if (tailoredIndex === 0) return { label: "Featured · first", className: positiveTag };
+    if (tailoredIndex >= 0) return { label: `Featured · position ${tailoredIndex + 1}`, className: warningTag };
+    return { label: "Featured · not shown", className: dangerTag };
+  }
+  return tailoredIndex >= 0
+    ? { label: `Resume position ${tailoredIndex + 1}`, className: tag }
+    : { label: "Not shown for this role", className: tag };
+}
+
 function MaterialChanges({ variant, job, profile }: { variant: ResumeVariant; job: Job; profile: Profile }) {
   const freshness = materialFreshness(variant, job, profile);
   const needsRefresh = materialNeedsRefresh(freshness);
@@ -114,6 +211,11 @@ function MaterialChanges({ variant, job, profile }: { variant: ResumeVariant; jo
   const summaryStatus = framingStatus(summary, profile.resumeJson.summary?.trim());
   const needsFitReview = fit?.level === "caution" || fit?.level === "low";
   const readiness = materialReadiness(fit, freshness);
+  const sourceExperience = profile.resumeJson.experience ?? [];
+  const tailoredExperience = variant.resumeJson.experience ?? [];
+  const history = buildWorkHistoryReview(sourceExperience, tailoredExperience);
+  const sourceProjects = profile.resumeJson.projects ?? [];
+  const tailoredProjects = variant.resumeJson.projects ?? [];
 
   return (
     <section aria-labelledby={`changes-${variant.id}`} className="mt-5 rounded-2xl border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--rust)_3%,transparent)] p-4 sm:p-5">
@@ -149,6 +251,10 @@ function MaterialChanges({ variant, job, profile }: { variant: ResumeVariant; jo
         <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--ink)_10%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_72%,transparent)] p-4">
           <p className="text-xs font-semibold text-[var(--ink)]">Resume framing</p>
           <dl className="mt-3 grid gap-4">
+            <div className="rounded-lg bg-[color:color-mix(in_srgb,var(--rust)_7%,transparent)] px-3 py-2.5">
+              <dt className="text-xs font-semibold text-[var(--rust)]">Target position</dt>
+              <dd className="mt-1 text-sm font-semibold leading-5 text-[var(--ink)]">{job.title}</dd>
+            </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <dt className="text-xs font-semibold text-[var(--ink-soft)]">Professional headline</dt>
@@ -192,6 +298,80 @@ function MaterialChanges({ variant, job, profile }: { variant: ResumeVariant; jo
             </div>
           ) : null}
         </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:items-start xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <section aria-labelledby={`history-${variant.id}`} className="rounded-xl border border-[color:color-mix(in_srgb,var(--ink)_10%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_72%,transparent)] p-4">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold text-[var(--ink)]">Work-history check</p>
+              <h4 className="mt-1 font-serif text-lg font-semibold tracking-[-0.025em] text-[var(--ink)]" id={`history-${variant.id}`}>Your official titles stay put.</h4>
+            </div>
+            <p className="text-xs leading-5 text-[var(--muted)]">Source order → this resume</p>
+          </div>
+
+          {history.length > 0 ? (
+            <ol className="mt-4 grid gap-3">
+              {history.map((review) => {
+                const status = historyStatus(review);
+                const sourceCount = review.source.bullets.length;
+                const tailoredCount = review.tailored?.bullets.length ?? 0;
+                return (
+                  <li className="rounded-lg border border-[color:color-mix(in_srgb,var(--ink)_8%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_72%,transparent)] px-3 py-3" key={`${review.source.company}-${review.source.title}-${review.sourceIndex}`}>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-[var(--rust)]">{review.source.company}</p>
+                        <p className="mt-0.5 text-sm font-semibold leading-5 text-[var(--ink)]">{review.source.title}</p>
+                      </div>
+                      <span className={status.className}>{status.label}</span>
+                    </div>
+                    <dl className="mt-3 grid gap-2 text-xs leading-5 sm:grid-cols-2">
+                      <div>
+                        <dt className="font-semibold text-[var(--ink-soft)]">Saved source</dt>
+                        <dd className="text-[var(--muted)]">{sourceCount} bullet{sourceCount === 1 ? "" : "s"} · {sequenceLabel(review.source.bullets.map((_, index) => index + 1), "No saved bullets")}</dd>
+                      </div>
+                      <div>
+                        <dt className="font-semibold text-[var(--ink-soft)]">This version</dt>
+                        <dd className="text-[var(--muted)]">{tailoredCount} bullet{tailoredCount === 1 ? "" : "s"} · {sequenceLabel(review.sourceBulletIndices, "No bullets in this version")}</dd>
+                      </div>
+                    </dl>
+                    {review.tailored?.bullets[0] ? <p className="mt-2 border-t border-[color:color-mix(in_srgb,var(--ink)_8%,transparent)] pt-2 text-xs leading-5 text-[var(--ink-soft)]"><span className="font-semibold text-[var(--rust)]">First for this role:</span> {review.tailored.bullets[0]}</p> : null}
+                  </li>
+                );
+              })}
+            </ol>
+          ) : <p className="mt-4 rounded-lg bg-[color:color-mix(in_srgb,var(--ink)_4%,transparent)] px-3 py-2.5 text-xs leading-5 text-[var(--muted)]">No saved work history is available to compare with this material set.</p>}
+        </section>
+
+        <section aria-labelledby={`projects-${variant.id}`} className="rounded-xl border border-[color:color-mix(in_srgb,var(--ink)_10%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_72%,transparent)] p-4">
+          <div>
+            <p className="text-xs font-semibold text-[var(--ink)]">Project order</p>
+            <h4 className="mt-1 font-serif text-lg font-semibold tracking-[-0.025em] text-[var(--ink)]" id={`projects-${variant.id}`}>Featured work leads; role evidence follows.</h4>
+            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">A featured project is work you explicitly chose to lead with. Other projects are placed for this role&apos;s direct evidence.</p>
+          </div>
+
+          {sourceProjects.length > 0 ? (
+            <ol className="mt-4 grid gap-2.5">
+              {sourceProjects.map((project, sourceIndex) => {
+                const tailoredIndex = tailoredProjects.findIndex((candidate) => factKey(candidate.name) === factKey(project.name));
+                const placement = projectPlacement(project, tailoredIndex);
+                return (
+                  <li className="flex gap-3 rounded-lg border border-[color:color-mix(in_srgb,var(--ink)_8%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_72%,transparent)] px-3 py-2.5" key={`${project.name}-${sourceIndex}`}>
+                    <span aria-hidden="true" className="grid size-6 shrink-0 place-items-center rounded-full bg-[color:color-mix(in_srgb,var(--rust)_10%,transparent)] text-[0.68rem] font-bold text-[var(--rust)]">{tailoredIndex >= 0 ? tailoredIndex + 1 : "—"}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-[var(--ink)]">{project.name}</p>
+                        {project.featured ? <span className={positiveTag}>Featured · shown first</span> : null}
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Profile position {sourceIndex + 1}{project.completedAt ? ` · completed ${project.completedAt}` : ""}</p>
+                      <span className={`mt-2 ${placement.className}`}>{placement.label}</span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : <p className="mt-4 rounded-lg bg-[color:color-mix(in_srgb,var(--ink)_4%,transparent)] px-3 py-2.5 text-xs leading-5 text-[var(--muted)]">No saved projects are available to compare with this material set.</p>}
+        </section>
       </div>
 
       <dl className="mt-4 grid gap-2 border-t border-[color:color-mix(in_srgb,var(--ink)_10%,transparent)] pt-4 text-xs leading-5 text-[var(--muted)] sm:grid-cols-3">
