@@ -38,25 +38,17 @@ test("tailoring only reorders stored facts and renders a local export", async ()
     assert.ok(variant.pdfPath === null || variant.pdfPath.endsWith(".pdf"));
     const html = await readFile(variant.htmlPath, "utf8");
     assert.match(html, /TypeScript services/);
-    assert.match(html, /Role alignment/);
-    assert.match(html, /TypeScript Engineer/);
-    assert.match(html, /Matched profile language/);
+    assert.doesNotMatch(html, /Evidence from your background/);
     assert.match(resumeToHtml(profile.resumeJson), /Taylor/);
     const richerHtml = resumeToHtml({
       ...profile.resumeJson,
       portfolioUrl: "https://example.com/portfolio",
       skills: ["TypeScript", "React"],
       interests: ["Running"],
-      targetRole: "Frontend Engineer",
-      targetCompany: "Acme",
-      postingSignals: ["Build accessible product experiences."],
-      relevantSkills: ["TypeScript"],
-      relevantEvidence: [{ label: "Engineer · Old Co", text: "Built TypeScript services" }],
     });
     assert.match(richerHtml, /https:\/\/example.com\/portfolio/);
     assert.match(richerHtml, /Skills &amp; technologies/);
     assert.match(richerHtml, /Running/);
-    assert.match(richerHtml, /Build accessible product experiences/);
   } finally {
     if (previousExportDirectory === undefined) delete process.env.EXPORT_DIR;
     else process.env.EXPORT_DIR = previousExportDirectory;

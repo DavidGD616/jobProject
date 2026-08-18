@@ -44,62 +44,6 @@ function overlapScore(text: string, jobTerms: Set<string>): number {
   return [...terms(text)].filter((candidateTerm) => [...jobTerms].some((jobTerm) => termsOverlap(candidateTerm, jobTerm))).length;
 }
 
-function concisePostingSignal(value: string): string {
-  const compact = value.replace(/\s+/g, " ").trim();
-  if (compact.length <= 190) return compact;
-  const sentence = compact.slice(0, 190).replace(/[,;:]?\s+\S*$/, "").trim();
-  return `${sentence || compact.slice(0, 187).trim()}…`;
-}
-
-function postingSignals(description: string): string[] {
-  const lines = description
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&mdash;/gi, "—")
-    .replace(/&amp;/gi, "&")
-    .split(/\r?\n+/)
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-  let section: "actions" | "required" | "preferred" | null = null;
-  const selected: Record<"actions" | "required" | "preferred", string[]> = { actions: [], required: [], preferred: [] };
-  for (const line of lines) {
-    const heading = line.toLowerCase().replace(/[’']/g, "'").replace(/[^a-z ]/g, "").trim();
-    if (/^what you ll do$/.test(heading) || /^what youll do$/.test(heading)) {
-      section = "actions";
-      continue;
-    }
-    if (heading === "required qualifications") {
-      section = "required";
-      continue;
-    }
-    if (heading === "preferred qualifications") {
-      section = "preferred";
-      continue;
-    }
-    if (/^(about the team|about the job|us salary range|benefits|protecting yourself from recruitment scams|data privacy)$/.test(heading)) {
-      section = null;
-      continue;
-    }
-    if (section && selected[section].length < 6 && line.length > 25) selected[section].push(concisePostingSignal(line));
-  }
-  return [...selected.required, ...selected.actions, ...selected.preferred].slice(0, 3);
-}
-
-function relevantEvidence(resume: ResumeProfileJson, jobTerms: Set<string>): Array<{ label: string; text: string }> {
-  const candidates = (resume.experience ?? []).flatMap((experience) => experience.bullets.map((text) => ({
-    label: `${experience.title} · ${experience.company}`,
-    text,
-  }))).concat((resume.projects ?? []).map((project) => ({
-    label: `Project · ${project.name}`,
-    text: project.description,
-  })));
-  return candidates
-    .map((candidate, index) => ({ candidate, score: overlapScore(candidate.text, jobTerms), index }))
-    .filter((value) => value.score > 0)
-    .sort((left, right) => right.score - left.score || left.index - right.index)
-    .slice(0, 4)
-    .map((value) => value.candidate);
-}
-
 function relevantSkills(skills: readonly string[], jobTerms: Set<string>): string[] {
   return skills.filter((skill) => overlapScore(skill, jobTerms) > 0).slice(0, 10);
 }
@@ -117,6 +61,7 @@ function deterministicResume(resume: ResumeProfileJson, description: string): Re
   const jdTerms = terms(description);
   return {
     ...resume,
+    projects: [...(resume.projects ?? [])].sort((left, right) => overlapScore(right.description, jdTerms) - overlapScore(left.description, jdTerms)),
     experience: (resume.experience ?? []).map((experience) => ({
       ...experience,
       bullets: [...experience.bullets].sort((left, right) => {
@@ -136,18 +81,14 @@ function groundedCoverLetter(profile: Profile, companyName: string, jobTitle: st
   return `Dear ${companyName} hiring team,\n\nI am interested in the ${jobTitle} role. ${evidence}. I would welcome the chance to discuss how that experience could support the team.\n\nThank you,\n${profile.resumeJson.name ?? "[Your name]"}`;
 }
 
-function printableResume(resume: ResumeProfileJson, profile: Profile, companyName: string, jobTitle: string, description: string) {
+function printableResume(resume: ResumeProfileJson, profile: Profile, description: string) {
   const jobTerms = terms(description);
+  const matched = relevantSkills(profile.skills, jobTerms);
   return {
     ...resume,
     portfolioUrl: portfolioFromSummary(resume),
-    skills: profile.skills,
+    skills: [...matched, ...profile.skills.filter((skill) => !matched.includes(skill))],
     interests: resume.interests,
-    targetRole: jobTitle,
-    targetCompany: companyName,
-    postingSignals: postingSignals(description),
-    relevantSkills: relevantSkills(profile.skills, jobTerms),
-    relevantEvidence: relevantEvidence(resume, jobTerms),
   };
 }
 
@@ -208,7 +149,7 @@ export async function createTailoredVariant(input: {
       llmUsed = true;
     }
   }
-  const printable = printableResume(resume, input.profile, companyName, row.job.title, row.job.description);
+  const printable = printableResume(resume, input.profile, row.job.description);
   const variant = database.insert(resumeVariants).values({
     jobId: input.jobId,
     resumeJson: resume,
