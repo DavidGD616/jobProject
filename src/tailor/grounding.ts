@@ -6,7 +6,7 @@ import type {
 } from "@/db/schema";
 
 /** Bump whenever the structured tailoring contract or factual rules change. */
-export const TAILOR_PROMPT_VERSION = "tailor-v6";
+export const TAILOR_PROMPT_VERSION = "tailor-v7";
 
 type RequirementKind = "skill" | "clearance" | "citizenship" | "years" | "seniority" | "role";
 
@@ -50,6 +50,8 @@ export interface GroundedTailoringPlan {
   experienceBulletScores: number[][];
   /** Transferable (not technical) source facts used only to prioritize bullets. */
   experienceTransferableScores: number[][];
+  /** Job-aligned transferable facts eligible for a cover-letter fallback. */
+  experienceJobTransferableScores: number[][];
   evidenceMap: TailoringEvidence[];
   fitAssessment: TailorFitAssessment;
 }
@@ -282,19 +284,31 @@ function hasSpecificRoleOrSkillEvidence(text: string, requirements: readonly Tai
 }
 
 const transferableExperienceSignals = [
-  /\b(?:customer|client|user|stakeholder|partner)\b/i,
-  /\b(?:requirement|feedback|research|brief|need)\b/i,
-  /\b(?:design|prototype|workflow|interface|journey|ux|ui)\b/i,
-  /\b(?:collaborat|cross[ -]?functional|coordinat|partner)\b/i,
-  /\b(?:quality|test|review|process|production|launch|deliver)\b/i,
+  { pattern: /\b(?:customers?|clients?|users?|stakeholders?|partner\w*)\b/i, weight: 3 },
+  { pattern: /\b(?:requirements?|feedback|research|briefs?|needs?)\b/i, weight: 3 },
+  { pattern: /\b(?:design(?:s|ed|ing)?|prototypes?|workflows?|interfaces?|journeys?|ux|ui)\b/i, weight: 2 },
+  { pattern: /\b(?:collaborat\w*|cross[ -]?functional|coordinat\w*)\b/i, weight: 3 },
+  { pattern: /\b(?:quality|test(?:s|ed|ing)?|reviews?|process(?:es)?|production|launch(?:es|ed|ing)?|deliver\w*)\b/i, weight: 1 },
 ];
 
 /**
  * Transferable facts are never used to assert a technical requirement. They
- * simply rise above unrelated facts when the job text asks for the same kind
- * of customer, design, delivery, or collaboration work.
+ * rise above unrelated facts in a resume. Direct technical evidence always
+ * remains first; this gives client, requirements, and collaboration facts a
+ * truthful second tier even when a job description uses different wording.
  */
-function transferableFactScore(
+function transferablePriorityScore(text: string): number {
+  return transferableExperienceSignals.reduce((score, signal) => (
+    signal.pattern.test(text) ? score + signal.weight : score
+  ), 0);
+}
+
+/**
+ * Cover-letter fallback facts need an additional connection to the role. A
+ * generally transferable source fact can improve resume order without being
+ * presented as evidence for an unrelated job requirement.
+ */
+function jobAlignedTransferableScore(
   text: string,
   jobTerms: readonly string[],
   requirements: readonly TailoringRequirement[],
@@ -304,7 +318,7 @@ function transferableFactScore(
     ...requirements.flatMap((requirement) => requirement.tokens),
   ].join(" ");
   return transferableExperienceSignals.reduce((score, signal) => (
-    signal.test(text) && signal.test(jobText) ? score + 1 : score
+    signal.pattern.test(text) && signal.pattern.test(jobText) ? score + signal.weight : score
   ), 0);
 }
 
@@ -391,21 +405,22 @@ function rankSelections(
   profile: Profile,
   description: string,
   requirements: readonly TailoringRequirement[],
-): Pick<GroundedTailoringPlan, "skillScores" | "projectScores" | "featuredProjectIndices" | "projectTransferableScores" | "projectBulletScores" | "experienceBulletScores" | "experienceTransferableScores" | "selections"> {
+): Pick<GroundedTailoringPlan, "skillScores" | "projectScores" | "featuredProjectIndices" | "projectTransferableScores" | "projectBulletScores" | "experienceBulletScores" | "experienceTransferableScores" | "experienceJobTransferableScores" | "selections"> {
   const jobTerms = terms(description);
   const resume = profile.resumeJson;
   const skills = canonicalSkills(profile);
   const skillScores = new Map(skills.map((skill) => [skill, scoreText(skill, jobTerms, requirements)]));
   const projectScores = (resume.projects ?? []).map((project) => scoreText([project.name, project.description, ...(project.technologies ?? []), ...(project.bullets ?? [])].join(" "), jobTerms, requirements));
   const featuredIndices = featuredProjectIndices(resume);
-  const projectTransferableScores = (resume.projects ?? []).map((project) => transferableFactScore(
+  const projectTransferableScores = (resume.projects ?? []).map((project) => jobAlignedTransferableScore(
     [project.name, project.description, ...(project.technologies ?? []), ...(project.bullets ?? [])].join(" "),
     jobTerms,
     requirements,
   ));
   const projectBulletScores = (resume.projects ?? []).map((project) => (project.bullets ?? []).map((bullet) => scoreText(bullet, jobTerms, requirements)));
   const experienceBulletScores = (resume.experience ?? []).map((item) => item.bullets.map((bullet) => scoreText(bullet, jobTerms, requirements)));
-  const experienceTransferableScores = (resume.experience ?? []).map((item) => item.bullets.map((bullet) => transferableFactScore(bullet, jobTerms, requirements)));
+  const experienceTransferableScores = (resume.experience ?? []).map((item) => item.bullets.map(transferablePriorityScore));
+  const experienceJobTransferableScores = (resume.experience ?? []).map((item) => item.bullets.map((bullet) => jobAlignedTransferableScore(bullet, jobTerms, requirements)));
 
   const selections: TailorSelections = {
     projectIndices: new Set(selectedProjectIndices(projectScores, featuredIndices, 3)),
@@ -443,6 +458,7 @@ function rankSelections(
     projectBulletScores,
     experienceBulletScores,
     experienceTransferableScores,
+    experienceJobTransferableScores,
     selections,
   };
 }
@@ -511,7 +527,7 @@ function fallbackRoleEvidence(input: {
   projectScores: readonly number[];
   projectTransferableScores: readonly number[];
   experienceBulletScores: readonly number[][];
-  experienceTransferableScores: readonly number[][];
+  experienceJobTransferableScores: readonly number[][];
 }): TailoringEvidence[] {
   if (!input.requirement) return [];
   const resume = input.profile.resumeJson;
@@ -541,7 +557,7 @@ function fallbackRoleEvidence(input: {
       if (!bullet) continue;
       if (
         !hasSpecificRoleOrSkillEvidence(bullet, input.requirements)
-        && (input.experienceTransferableScores[experienceIndex]?.[bulletIndex] ?? 0) <= 0
+        && (input.experienceJobTransferableScores[experienceIndex]?.[bulletIndex] ?? 0) <= 0
       ) continue;
       evidence.push({
         requirement: input.requirement.label,
@@ -573,6 +589,7 @@ function createEvidenceMap(input: {
   projectTransferableScores: readonly number[];
   experienceBulletScores: readonly number[][];
   experienceTransferableScores: readonly number[][];
+  experienceJobTransferableScores: readonly number[][];
 }): TailoringEvidence[] {
   const evidence = input.requirements
     .filter((requirement) => requirement.kind === "skill" || requirement.kind === "role")
@@ -656,6 +673,7 @@ export function buildGroundedTailoringPlan(input: {
     projectTransferableScores: ranked.projectTransferableScores,
     experienceBulletScores: ranked.experienceBulletScores,
     experienceTransferableScores: ranked.experienceTransferableScores,
+    experienceJobTransferableScores: ranked.experienceJobTransferableScores,
   });
   return {
     ...ranked,
@@ -889,6 +907,7 @@ export function planWithSelections(input: {
     projectTransferableScores: input.plan.projectTransferableScores,
     experienceBulletScores: input.plan.experienceBulletScores,
     experienceTransferableScores: input.plan.experienceTransferableScores,
+    experienceJobTransferableScores: input.plan.experienceJobTransferableScores,
   });
   return {
     ...input.plan,

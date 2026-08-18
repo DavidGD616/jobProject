@@ -165,7 +165,7 @@ test("deterministic tailoring changes the target role evidence without changing 
       ]);
       assert.equal(tailored.variant.profileVersion, profile.version);
       assert.equal(tailored.variant.jobContentHash, job.contentHash);
-      assert.equal(tailored.variant.promptVersion, "tailor-v6");
+      assert.equal(tailored.variant.promptVersion, "tailor-v7");
       assert.equal(tailored.variant.fitAssessment?.level, "strong");
       assert.ok((tailored.variant.evidenceMap ?? []).some((item) => item.source === "project"));
       assert.ok((tailored.variant.evidenceMap ?? []).some((item) => item.source === "experience"));
@@ -429,7 +429,7 @@ test("LLM source selections merge repeated experience references against origina
       assert.equal(resume.experience?.[0]?.endDate, "Present");
       assert.doesNotMatch(resume.headline ?? "", /Chief Architect/);
       assert.ok(!resume.skills?.includes("not-a-profile-skill"));
-      assert.equal(tailored.variant.promptVersion, "tailor-v6");
+      assert.equal(tailored.variant.promptVersion, "tailor-v7");
     } finally {
       sqlite.close();
     }
