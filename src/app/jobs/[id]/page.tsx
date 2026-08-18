@@ -60,10 +60,10 @@ export default async function JobPage({ params, searchParams }: JobPageProps) {
             <div>
               <Link className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--paper)_72%,transparent)] underline decoration-[color:color-mix(in_srgb,var(--paper)_34%,transparent)] underline-offset-4 transition hover:text-[var(--paper)]" href="/">← Back to open roles</Link>
               <p className="mt-5 text-sm font-semibold text-[color:color-mix(in_srgb,var(--paper)_72%,transparent)]">Step 2 of 6 · Explore a role · {companyName}</p>
-              <h1 className="mt-2 max-w-4xl font-serif text-4xl font-semibold leading-[0.98] tracking-[-0.05em] sm:text-5xl">{row.job.title}</h1>
+              <h1 className="mt-2 max-w-4xl break-words font-serif text-[2.1rem] font-semibold leading-[0.98] tracking-[-0.05em] sm:text-5xl">{row.job.title}</h1>
               <p className="mt-4 text-sm leading-6 text-[color:color-mix(in_srgb,var(--paper)_72%,transparent)]">{row.job.location ?? "Location not listed"}{row.job.remoteType && row.job.remoteType !== "unknown" ? ` · ${row.job.remoteType}` : ""}</p>
             </div>
-            <a className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[var(--paper)] px-4 py-2.5 text-sm font-semibold text-[var(--ink)] transition hover:bg-[color:color-mix(in_srgb,var(--paper)_86%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--paper)]" href={row.job.url} rel="noreferrer" target="_blank">Open official posting ↗</a>
+            <a className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-[var(--paper)] px-4 py-2.5 text-sm font-semibold text-[var(--ink)] transition hover:bg-[color:color-mix(in_srgb,var(--paper)_86%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--paper)] lg:w-auto" href={row.job.url} rel="noreferrer" target="_blank">Open official posting ↗</a>
           </div>
         </header>
 
@@ -75,7 +75,7 @@ export default async function JobPage({ params, searchParams }: JobPageProps) {
               <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
                 <div>
                   <p className="text-sm font-semibold text-[var(--rust)]">The role</p>
-                  <h2 className="mt-1 font-serif text-3xl font-semibold tracking-[-0.04em] text-[var(--ink)]" id="description-heading">Read the details before you commit.</h2>
+                  <h2 className="mt-1 font-serif text-[1.75rem] font-semibold tracking-[-0.04em] text-[var(--ink)] sm:text-3xl" id="description-heading">Read the details before you commit.</h2>
                 </div>
                 <span className={tag}>Official company posting</span>
               </div>
@@ -87,7 +87,7 @@ export default async function JobPage({ params, searchParams }: JobPageProps) {
                 {salary ? <span className={tag}>{salary}</span> : null}
               </div>
 
-              <div className="mt-6 whitespace-pre-wrap rounded-2xl border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_72%,transparent)] p-5 text-sm leading-7 text-[var(--ink-soft)] sm:p-7">
+              <div className="mt-6 break-words whitespace-pre-wrap rounded-2xl border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_72%,transparent)] p-5 text-sm leading-7 text-[var(--ink-soft)] sm:p-7">
                 {row.job.description}
               </div>
             </article>

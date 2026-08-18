@@ -51,7 +51,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
           <div className="relative grid gap-7 lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-end">
             <div>
               <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--paper)_72%,transparent)]">Step 3 of 6 · Look through your matches</p>
-              <h1 className="mt-3 max-w-3xl font-serif text-4xl font-semibold leading-[0.98] tracking-[-0.05em] sm:text-5xl">Choose the roles that deserve your time.</h1>
+              <h1 className="mt-3 max-w-3xl font-serif text-[2.1rem] font-semibold leading-[0.98] tracking-[-0.05em] sm:text-5xl">Choose the roles that deserve your time.</h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-[color:color-mix(in_srgb,var(--paper)_72%,transparent)] sm:text-base">Start with the strongest local matches, make one quick call, and keep only the opportunities you want to move forward.</p>
             </div>
             <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--paper)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_8%,transparent)] p-5">
@@ -75,7 +75,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
               <div>
                 <p className="text-sm font-semibold text-[var(--rust)]">Your matches</p>
-                <h2 className="mt-1 font-serif text-3xl font-semibold tracking-[-0.04em] text-[var(--ink)]" id="review-heading">{matches.length === 0 ? "No roles ready to review" : `${matches.length} role${matches.length === 1 ? "" : "s"} ready for a decision`}</h2>
+                <h2 className="mt-1 font-serif text-[1.75rem] font-semibold tracking-[-0.04em] text-[var(--ink)] sm:text-3xl" id="review-heading">{matches.length === 0 ? "No roles ready to review" : `${matches.length} role${matches.length === 1 ? "" : "s"} ready for a decision`}</h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">For each role: read why it surfaced, open the posting if it looks promising, then save a simple yes or no.</p>
               </div>
               <WorkflowCallout eyebrow="A quick way to decide" title="Ask three questions" tone="signal">
@@ -95,18 +95,18 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
                     <li key={match.job.id}>
                       <article className={`${card} overflow-hidden`}>
                         <div className="grid gap-5 lg:grid-cols-[3rem_minmax(0,1fr)_13rem] lg:gap-7">
-                          <div className="flex items-start justify-between lg:block">
+                          <div className="flex items-center gap-3 lg:block">
                             <span className="grid size-10 place-items-center rounded-full bg-[color:color-mix(in_srgb,var(--rust)_10%,transparent)] text-sm font-bold text-[var(--rust)]">{index + 1}</span>
-                            <span className="mt-3 hidden text-xs text-[var(--muted)] lg:block">Priority</span>
+                            <span className="text-xs font-medium text-[var(--muted)] lg:mt-3 lg:block">Priority</span>
                           </div>
 
                           <div className="min-w-0">
-                            <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div className="grid gap-3 min-[380px]:grid-cols-[minmax(0,1fr)_auto] min-[380px]:items-start">
                               <div className="min-w-0">
-                                <Link className="font-serif text-2xl font-semibold leading-tight tracking-[-0.035em] text-[var(--ink)] transition hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rust)]" href={`/jobs/${match.job.id}`}>{match.job.title}</Link>
+                                <Link className="break-words font-serif text-2xl font-semibold leading-tight tracking-[-0.035em] text-[var(--ink)] transition hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rust)]" href={`/jobs/${match.job.id}`}>{match.job.title}</Link>
                                 <p className="mt-1.5 text-sm font-semibold text-[var(--ink-soft)]">{companyName}</p>
                               </div>
-                              <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--rust)_22%,transparent)] bg-[color:color-mix(in_srgb,var(--rust)_7%,transparent)] px-3 py-2 text-right lg:hidden">
+                              <div className="w-fit max-w-full rounded-xl border border-[color:color-mix(in_srgb,var(--rust)_22%,transparent)] bg-[color:color-mix(in_srgb,var(--rust)_7%,transparent)] px-3 py-2 text-left min-[380px]:text-right lg:hidden">
                                 <p className="text-sm font-bold text-[var(--ink)]">{scoreLabel(match.learnedScore, match.llmScore, match.retrievalScore)}</p>
                               </div>
                             </div>
@@ -142,9 +142,9 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
                               <input name="profile_id" type="hidden" value={profile.id} />
                               <input name="company_id" type="hidden" value={match.company.id} />
                               {match.triageDecision !== "interested" ? <button className={`${primaryButton} w-full`} name="decision" type="submit" value="interested">I’m interested</button> : <Link className={`${primaryButton} w-full`} href={`/jobs/${match.job.id}`}>Continue this role</Link>}
-                              <div className="grid grid-cols-2 gap-2">
-                                <button className={`${quietButton} w-full`} name="decision" type="submit" value="skip">Not now</button>
-                                <button className={`${quietButton} w-full text-[#973e34] hover:border-[#e2a298] hover:text-[#973e34]`} name="decision" type="submit" value="block_company">Hide company</button>
+                              <div className="grid gap-2 min-[360px]:grid-cols-2">
+                                <button className={`${quietButton} min-h-11 w-full`} name="decision" type="submit" value="skip">Not now</button>
+                                <button className={`${quietButton} min-h-11 w-full text-[#973e34] hover:border-[#e2a298] hover:text-[#973e34]`} name="decision" type="submit" value="block_company">Hide company</button>
                               </div>
                             </form>
                             <a className={`mt-1 text-center text-xs ${textLink}`} href={match.job.url} rel="noreferrer" target="_blank">Open original posting ↗</a>

@@ -91,7 +91,7 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
           <div className="relative grid gap-7 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
             <div>
               <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--paper)_72%,transparent)]">Step 4 of 6 · Keep applications moving</p>
-              <h1 className="mt-3 max-w-3xl font-serif text-4xl font-semibold leading-[0.98] tracking-[-0.05em] sm:text-5xl">Know exactly what needs your attention next.</h1>
+              <h1 className="mt-3 max-w-3xl font-serif text-[2.1rem] font-semibold leading-[0.98] tracking-[-0.05em] sm:text-5xl">Know exactly what needs your attention next.</h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-[color:color-mix(in_srgb,var(--paper)_72%,transparent)] sm:text-base">This is your private record of applications, conversations, notes, and follow-ups. It never sends an application for you.</p>
             </div>
             <dl className="grid grid-cols-2 gap-3">
@@ -117,7 +117,7 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
               <div>
                 <p className="text-sm font-semibold text-[var(--rust)]">At a glance</p>
-                <h2 className="mt-1 font-serif text-3xl font-semibold tracking-[-0.04em] text-[var(--ink)]" id="overview-heading">Your application picture</h2>
+                <h2 className="mt-1 font-serif text-[1.75rem] font-semibold tracking-[-0.04em] text-[var(--ink)] sm:text-3xl" id="overview-heading">Your application picture</h2>
               </div>
               <p className="max-w-md text-sm leading-6 text-[var(--muted)]">Update the status only when something has actually changed. Keep the next follow-up concrete.</p>
             </div>
@@ -137,7 +137,7 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
                 <div>
                   <p className="text-sm font-semibold text-[var(--rust)]">Your roles</p>
-                  <h2 className="mt-1 font-serif text-3xl font-semibold tracking-[-0.04em] text-[var(--ink)]" id="applications-heading">Applications in one place</h2>
+                  <h2 className="mt-1 font-serif text-[1.75rem] font-semibold tracking-[-0.04em] text-[var(--ink)] sm:text-3xl" id="applications-heading">Applications in one place</h2>
                 </div>
                 <Link className={`text-sm ${textLink}`} href="/review">Find more matches</Link>
               </div>
@@ -153,10 +153,10 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
                               <span className={statusClass(application.status)}>{readableStatus(application.status)}</span>
                               {application.nextFollowupAt ? <span className={tag}>Follow up {dateValue(application.nextFollowupAt)}</span> : <span className={tag}>No follow-up set</span>}
                             </div>
-                            <Link className="mt-3 block font-serif text-2xl font-semibold tracking-[-0.035em] text-[var(--ink)] transition hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rust)]" href={`/jobs/${application.job.id}`}>{application.job.title}</Link>
+                            <Link className="mt-3 block break-words font-serif text-2xl font-semibold tracking-[-0.035em] text-[var(--ink)] transition hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rust)]" href={`/jobs/${application.job.id}`}>{application.job.title}</Link>
                             <p className="mt-1 text-sm font-semibold text-[var(--ink-soft)]">{displayCompanyName(application.company.name)}</p>
                           </div>
-                          <Link className={`${secondaryButton} shrink-0`} href={`/jobs/${application.job.id}`}>Read role</Link>
+                          <Link className={`${secondaryButton} w-full shrink-0 lg:w-auto`} href={`/jobs/${application.job.id}`}>Read role</Link>
                         </div>
 
                         <div className="mt-5 grid gap-4 border-t border-[color:color-mix(in_srgb,var(--ink)_10%,transparent)] pt-5 lg:grid-cols-[minmax(0,0.8fr)_minmax(20rem,1fr)]">
@@ -182,9 +182,9 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
                               Your next action or note
                               <input className={field} defaultValue={application.notes ?? ""} name="notes" placeholder="For example: Email Jordan on Tuesday" />
                             </label>
-                            <div className="flex flex-wrap items-center justify-between gap-3 sm:col-span-2">
+                            <div className="flex flex-col items-stretch gap-3 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between">
                               <p className="text-xs leading-5 text-[var(--muted)]">Saving creates a clear record of any status or follow-up change.</p>
-                              <button className={primaryButton} type="submit">Save changes</button>
+                              <button className={`${primaryButton} w-full sm:w-auto`} type="submit">Save changes</button>
                             </div>
                           </form>
                         </div>

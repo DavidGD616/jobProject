@@ -99,12 +99,12 @@ export default async function Home({ searchParams }: PageProps) {
   }, null);
 
   return (
-    <main className="min-h-screen px-4 py-4 sm:px-7 sm:py-7 lg:px-10 lg:py-9" id="main-content">
+    <main className="min-h-screen px-3 py-3 sm:px-7 sm:py-7 lg:px-10 lg:py-9" id="main-content">
       <div className="mx-auto max-w-[1480px]">
         <AppNav />
 
         <div className="space-y-5 pt-5 sm:space-y-6 sm:pt-6">
-          <header className="overflow-hidden rounded-[2rem] border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[var(--paper)] p-6 shadow-sm sm:p-8 lg:p-10">
+          <header className="overflow-hidden rounded-[1.5rem] border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[var(--paper)] p-5 shadow-sm sm:rounded-[2rem] sm:p-8 lg:p-10">
             <div className="grid gap-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(21rem,0.75fr)] lg:items-end">
               <div>
                 <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-[var(--ink-soft)]">
@@ -124,15 +124,15 @@ export default async function Home({ searchParams }: PageProps) {
                       : "Add a profile to turn the local job inventory into a focused candidate pool."
                     : "Browse the complete local inventory of official openings, then use Matches to compare promising roles with your profile."}
                 </p>
-                <div className="mt-6 flex flex-wrap gap-3">
+                <div className="mt-6 grid gap-2.5 sm:flex sm:flex-wrap sm:gap-3">
                   <a
-                    className="inline-flex items-center gap-2 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-[var(--paper)] shadow-sm transition hover:-translate-y-px hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-[var(--paper)] shadow-sm transition hover:-translate-y-px hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)] sm:w-auto"
                     href="#role-results"
                   >
                     Browse latest roles <span aria-hidden="true">↓</span>
                   </a>
                   <Link
-                    className="inline-flex items-center gap-2 rounded-xl border border-[color:color-mix(in_srgb,var(--ink)_14%,transparent)] bg-[var(--paper)] px-4 py-3 text-sm font-semibold text-[var(--ink)] transition hover:border-[var(--rust)] hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[color:color-mix(in_srgb,var(--ink)_14%,transparent)] bg-[var(--paper)] px-4 py-3 text-sm font-semibold text-[var(--ink)] transition hover:border-[var(--rust)] hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)] sm:w-auto"
                     href={hasProfile ? "/review" : "/profile"}
                   >
                     {hasProfile ? "See your matches" : "Set up your profile"} <span aria-hidden="true">→</span>
@@ -306,13 +306,13 @@ export default async function Home({ searchParams }: PageProps) {
                           aria-labelledby={titleId}
                           className="[content-visibility:auto] rounded-2xl border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[var(--paper)] p-4 transition duration-150 hover:-translate-y-px hover:border-[color:color-mix(in_srgb,var(--rust)_58%,transparent)] hover:shadow-md sm:p-5"
                         >
-                          <div className="grid gap-4 lg:grid-cols-[2.5rem_minmax(0,1fr)_auto] lg:items-start">
+                          <div className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-3 gap-y-4 sm:grid-cols-[2.5rem_minmax(0,1fr)] sm:gap-x-4 lg:grid-cols-[2.5rem_minmax(0,1fr)_auto] lg:items-start">
                             <span aria-hidden="true" className="grid size-9 place-items-center rounded-full bg-[color:color-mix(in_srgb,var(--ink)_7%,transparent)] text-xs font-bold text-[var(--ink-soft)]">
                               {String(index + 1).padStart(2, "0")}
                             </span>
                             <div className="min-w-0">
                               <p className="text-sm font-semibold text-[var(--ink-soft)]">{companyName}</p>
-                              <h3 className="mt-1 font-serif text-2xl leading-[1.08] tracking-[-0.032em] text-[var(--ink)] sm:text-[1.7rem]" id={titleId}>
+                              <h3 className="mt-1 break-words font-serif text-2xl leading-[1.08] tracking-[-0.032em] text-[var(--ink)] sm:text-[1.7rem]" id={titleId}>
                                 <Link
                                   className="rounded-sm transition hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]"
                                   href={`/jobs/${job.id}`}
@@ -332,16 +332,16 @@ export default async function Home({ searchParams }: PageProps) {
                                 </div>
                               ) : null}
                             </div>
-                            <div className="flex flex-wrap gap-2 lg:justify-end">
+                            <div className="col-span-2 grid gap-2 min-[360px]:grid-cols-2 lg:col-span-1 lg:col-start-3 lg:row-start-1 lg:flex lg:flex-wrap lg:justify-end">
                               <Link
-                                className="inline-flex items-center justify-center rounded-lg bg-[var(--ink)] px-3 py-2 text-sm font-semibold text-[var(--paper)] transition hover:bg-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]"
+                                className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[var(--ink)] px-3 py-2 text-sm font-semibold text-[var(--paper)] transition hover:bg-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]"
                                 href={`/jobs/${job.id}`}
                               >
                                 Explore role
                               </Link>
                               <a
                                 aria-label={`Open the original posting for ${job.title} at ${companyName} in a new tab`}
-                                className="inline-flex items-center justify-center rounded-lg border border-[color:color-mix(in_srgb,var(--ink)_14%,transparent)] px-3 py-2 text-sm font-semibold text-[var(--ink-soft)] transition hover:border-[var(--rust)] hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]"
+                                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[color:color-mix(in_srgb,var(--ink)_14%,transparent)] px-3 py-2 text-sm font-semibold text-[var(--ink-soft)] transition hover:border-[var(--rust)] hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--rust)]"
                                 href={job.url}
                                 rel="noreferrer"
                                 target="_blank"
