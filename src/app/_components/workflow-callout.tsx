@@ -25,10 +25,10 @@ export function WorkflowCallout({
   const eyebrowClass = tone === "ink" ? "text-[var(--paper)]" : "text-[var(--rust)]";
 
   return (
-    <section className={`rounded-2xl border p-4 sm:p-5 ${toneClass} ${className}`}>
+    <section className={`min-w-0 rounded-2xl border p-4 sm:p-5 ${toneClass} ${className}`}>
       <p className={`text-xs font-semibold ${eyebrowClass}`}>{eyebrow}</p>
-      <h2 className="mt-2 font-serif text-2xl leading-tight tracking-[-0.035em]">{title}</h2>
-      <div className={`mt-2 text-sm leading-6 ${mutedClass}`}>{children}</div>
+      <h2 className="mt-2 break-words font-serif text-2xl leading-tight tracking-[-0.035em]">{title}</h2>
+      <div className={`mt-2 break-words text-sm leading-6 ${mutedClass}`}>{children}</div>
     </section>
   );
 }

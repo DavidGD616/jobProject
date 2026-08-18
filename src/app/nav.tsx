@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 const navigation = [
   { href: "/profile", label: "Profile", description: "Set your direction", step: "01", matches: (path: string) => path.startsWith("/profile") },
@@ -14,6 +15,16 @@ const navigation = [
 
 export function AppNav() {
   const pathname = usePathname();
+  const activeNavItemRef = useRef<HTMLAnchorElement>(null);
+
+  // On a phone the workflow stays a compact, horizontally scrollable rail.
+  // Center the current step after navigation so the user never has to hunt for
+  // where they are in the six-step flow.
+  useEffect(() => {
+    if (!window.matchMedia("(max-width: 740px)").matches) return;
+    activeNavItemRef.current?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [pathname]);
+
   return (
     <nav aria-label="Primary" className="ledger-nav">
       <div className="ledger-nav-top">
@@ -30,7 +41,12 @@ export function AppNav() {
         {navigation.map((item) => {
           const active = item.matches(pathname);
           return (
-            <Link aria-current={active ? "page" : undefined} href={item.href} key={item.href}>
+            <Link
+              aria-current={active ? "page" : undefined}
+              href={item.href}
+              key={item.href}
+              ref={active ? activeNavItemRef : undefined}
+            >
               <span aria-hidden="true" className="ledger-nav-step">{item.step}</span>
               <span className="ledger-nav-label">
                 <span>{item.label}</span>
