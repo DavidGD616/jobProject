@@ -1,6 +1,5 @@
-import { unlink } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { resolve } from "node:path";
 
 import {
   clearAllResumeVariants,
@@ -14,6 +13,7 @@ import type { JobHuntDatabase } from "@/db";
 import { ensureActiveProfile } from "@/matching";
 
 import { createTailoredVariant } from "./engine";
+import { removeGeneratedResumeExports } from "./exports";
 
 export interface TailorCliOptions {
   jobId: number | null;
@@ -69,56 +69,16 @@ export interface ClearAllTailoredVariantsResult {
   filesRemoved: string[];
 }
 
-function generatedExportPaths(input: {
-  variantId: number;
-  pdfPath: string | null;
-  exportDirectory: string;
-}): string[] {
-  const htmlFile = `resume-variant-${input.variantId}.html`;
-  const pdfFile = `resume-variant-${input.variantId}.pdf`;
-  const storedPdfPath = input.pdfPath ? resolve(input.pdfPath) : null;
-  const storedPdfIsExport = storedPdfPath !== null
-    && basename(storedPdfPath) === pdfFile
-    && isPathInside(storedPdfPath, input.exportDirectory);
-  return [...new Set([
-    join(input.exportDirectory, htmlFile),
-    join(input.exportDirectory, pdfFile),
-    ...(storedPdfIsExport && storedPdfPath ? [storedPdfPath, join(dirname(storedPdfPath), htmlFile)] : []),
-  ])];
-}
-
-function isPathInside(path: string, directory: string): boolean {
-  const pathFromDirectory = relative(directory, path);
-  return pathFromDirectory === "" || (!pathFromDirectory.startsWith(`..${sep}`) && pathFromDirectory !== ".." && !isAbsolute(pathFromDirectory));
-}
-
-function isMissingFile(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
-}
-
 /** Clear variant rows and the local HTML/PDF files generated for them. */
 export async function clearAllTailoredVariants(
   options: ClearAllTailoredVariantsOptions = {},
 ): Promise<ClearAllTailoredVariantsResult> {
-  const exportDirectory = resolve(options.exportDirectory ?? process.env.EXPORT_DIR ?? "data/exports");
   const variants = clearAllResumeVariants(options.database ?? db, options.now);
-  const removeFile = options.unlinkFile ?? unlink;
-  const filesRemoved: string[] = [];
-
-  for (const variant of variants) {
-    for (const path of generatedExportPaths({
-      variantId: variant.id,
-      pdfPath: variant.pdfPath,
-      exportDirectory,
-    })) {
-      try {
-        await removeFile(path);
-        filesRemoved.push(path);
-      } catch (error) {
-        if (!isMissingFile(error)) throw error;
-      }
-    }
-  }
+  const { filesRemoved } = await removeGeneratedResumeExports({
+    variants,
+    exportDirectory: options.exportDirectory,
+    unlinkFile: options.unlinkFile,
+  });
 
   return { variantsCleared: variants.length, filesRemoved };
 }

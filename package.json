@@ -19,6 +19,7 @@
     "apply:prepare": "tsx src/apply/cli.ts",
     "apply:fill": "tsx src/apply/playwright-cli.ts",
     "jobs:learn": "tsx src/learning/cli.ts",
+    "reset": "tsx src/reset/cli.ts",
     "llm:bench": "tsx src/llm/bench-cli.ts",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
     "db:migrate": "tsx src/db/migrate.ts"

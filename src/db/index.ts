@@ -30,6 +30,8 @@ export {
   updateResumeVariantCoverLetter,
 } from "./resume-variants";
 export type { ClearedResumeVariant } from "./resume-variants";
+export { clearFreshStartState } from "./fresh-start";
+export type { FreshStartResult, FreshStartResumeVariant } from "./fresh-start";
 export {
   claimNextTailorRequest,
   completeTailorRequest,
