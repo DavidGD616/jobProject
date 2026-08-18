@@ -29,6 +29,55 @@
       "when": 1786987321962,
       "tag": "0003_cultured_lockjaw",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786996604918,
+      "tag": "0004_right_silvermane",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786996908059,
+      "tag": "0005_soft_miracleman",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1786997448214,
+      "tag": "0006_remarkable_white_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1786998065300,
+      "tag": "0007_concerned_iron_monger",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1786998474768,
+      "tag": "0008_loose_the_professor",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1787021315385,
+      "tag": "0009_lush_loners",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1787021588960,
+      "tag": "0010_jobs_fts",
+      "breakpoints": true
     }
   ]
 }

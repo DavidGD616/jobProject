@@ -31,13 +31,15 @@ LLM work is done by shelling out to installed AI CLIs ([ADR-0007](adr/0007-llm-v
  └───────────────────────────┬──────────────────────────────────┘
                              ▼
  ┌──────────────────────────────────────────────────────────────┐
- │  ENRICH            strip boilerplate → description_fts       │
+ │  INGEST / INDEX    strip boilerplate → description_fts       │
+ │                    → trigger-maintained jobs_fts (FTS5)      │
  │                    no LLM here. 10k jobs × a CLI call = 27h  │
  └───────────────────────────┬──────────────────────────────────┘
                              ▼
  ┌──────────────────────────────────────────────────────────────┐
  │  MATCH             1. hard filters (visa, geo, salary floor) │
- │                    2. lexical BM25 + feature score → ~60     │
+ │                    2. title-weighted FTS5 BM25 + features     │
+ │                       + weighted exact-term tie-break → ~60   │
  │                    3. LLM rerank → score + reasons + gaps    │
  │                       + corrected field extraction, same call │
  └───────────────────────────┬──────────────────────────────────┘
@@ -47,9 +49,9 @@ LLM work is done by shelling out to installed AI CLIs ([ADR-0007](adr/0007-llm-v
  └───────────────────────────┬──────────────────────────────────┘
                              ▼
  ┌──────────────────────────────────────────────────────────────┐
- │  TAILOR            select + rewrite resume bullets vs JD     │
- │                    draft cover letter → human edits          │
- │                    render PDF from structured resume         │
+ │  TAILOR            UI queues → local CLI worker claims next  │
+ │                    selects stored facts; grounded letter      │
+ │                    → human edits; render existing template    │
  └───────────────────────────┬──────────────────────────────────┘
                              ▼
  ┌──────────────────────────────────────────────────────────────┐
@@ -76,11 +78,11 @@ Two loops are what make the system improve rather than just aggregate:
 |---|---|---|---|
 | `discovery/*` | candidate names, URLs | rows in `companies` | weekly |
 | `sources/*` | company row + cached validator | `SourceFetchResult<RawPosting>` | scheduled |
-| `ingest` | `RawPosting[]` | normalized, heuristically enriched rows in `jobs` | scheduled |
-| `enrich` | `Job` | boilerplate-stripped `description_fts` | queued, per new job. **no LLM** |
-| `match` | `Job[]`, `Profile` | rows in `matches` | queued, after enrich |
+| `ingest` | `RawPosting[]` | normalized, heuristically enriched `jobs` rows with stripped `description_fts` | scheduled |
+| `match` | `Job[]`, `Profile` | FTS5 candidates and rows in `matches`; legacy `description_fts` NULLs backfilled once | local rank/review refresh. **no LLM** |
 | `llm` | task + prompt | parsed result, cached | called by match / tailor / discovery |
-| `tailor` | `Job`, `Profile` | resume variant + cover letter draft | on demand |
+| `tailor_requests` | job selected in `/tailor` | coalesced queued local-worker request | UI request: SQLite write only |
+| `tailor` | claimed request, `Job`, `Profile` | resume variant, grounded editable cover letter, HTML export and PDF when Chromium is available | local CLI worker: `pnpm tailor -- --next` |
 | `apply` | `Job`, artifacts | filled form, paused | on demand, interactive |
 
 **Source adapter contract** — every adapter exports the same shape; its registry entry supplies cadence and request policy:
@@ -98,10 +100,26 @@ Ingest combines it with the known company and registered adapter to add
 and deduplication links. It computes `content_hash` from `title_norm`, the
 company slug, and the description with the shared helper. It applies
 deterministic salary, seniority, and remote heuristics only where the source
-left a field empty, and writes the resulting `extraction_tier`. Enrich alone
-writes `description_fts`; the staleness sweep alone writes `closed_at`.
+left a field empty, and writes the resulting `extraction_tier`. Ingest writes
+the boilerplate-stripped `description_fts` whenever it observes a job; matching
+only backfills legacy open rows where that column is `NULL`. The staleness sweep
+alone writes `closed_at`.
 
-`normalize` being pure and I/O-free is the rule that keeps ingest testable against recorded fixtures. Source-supplied values remain authoritative. Boilerplate stripping and FTS work remain Phase 2.
+`normalize` being pure and I/O-free is the rule that keeps ingest testable
+against recorded fixtures. Source-supplied values remain authoritative. The
+`jobs_fts` external-content FTS5 table is backfilled by its migration and kept
+in sync by database triggers on every `jobs` insert, delete, and indexed-field
+update. Its `rowid` is `jobs.id`; matching joins on that key and uses
+title-weighted `bm25()` over `title` and `description_fts`.
+
+The `/tailor` UI never launches Chromium or calls an LLM. It creates one active
+`tailor_requests` row per job; `pnpm tailor -- --next` claims the oldest queued
+row, creates the variant, renders its local export, and marks the request
+completed or failed. The worker may ask an installed CLI to select valid source
+bullet indices, but it cannot rewrite or invent resume facts. It starts each
+cover letter from stored profile facts; the UI keeps that letter human-editable
+and synchronizes a saved edit to its attached application. Rendering preserves
+the existing Harvard resume template.
 
 `SourceFetchResult` distinguishes `{ kind: "fetched", postings, etag }` from
 `{ kind: "not_modified", etag }`. The scheduled poller persists each ETag by
@@ -148,8 +166,11 @@ Callers never pick a provider directly. They name a **task** (`extract`, `rerank
 
 ## Sync vs async
 
-- **Synchronous** (blocks the request): reads, filters, browsing, everything in the review UI. Stage 1 and stage 2 of matching are both synchronous — they are pure SQL.
-- **Asynchronous** (queued): all network fetches, all LLM calls, PDF rendering.
+- **Synchronous** (blocks the request): reads, filters, browsing, and queue
+  writes in the UI. Stage 1 and stage 2 of matching are local SQL/FTS work.
+- **Asynchronous** (off the UI request): all network fetches and LLM work.
+  Tailoring LLM/PDF work is claimed from `tailor_requests` by the local
+  `pnpm tailor -- --next` worker.
 
 No LLM call ever sits in a request path. At 5–30s per invocation this is not a guideline. Every LLM-dependent view must render correctly with the result **missing or stale** — jobs without an `llm_score` fall back to their retrieval rank rather than disappearing.
 
@@ -181,6 +202,7 @@ src/
   discovery/             finds companies (ADR-0010)
     probe.ts             slug → ATS endpoint → 200 or 404
     hn-hiring.ts         Algolia API → company names
+    adzuna.ts            profile role/location → candidates
     reverse-url.ts       apply URL → ATS token
     _contract.ts
   sources/               one dir per source, finds postings

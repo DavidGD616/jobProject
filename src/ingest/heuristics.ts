@@ -22,6 +22,14 @@ const salaryRange = new RegExp(
   "i",
 );
 
+/** Remove common benefit/EEO boilerplate before FTS5 indexes a posting. */
+export function stripBoilerplate(input: string): string {
+  const chunks = input.split(/\n{2,}/).filter((chunk) => {
+    return !/(equal opportunity|benefits package|what we offer|perks and benefits|privacy notice|accommodations statement)/i.test(chunk);
+  });
+  return chunks.join("\n\n").trim().slice(0, 80_000);
+}
+
 function salaryNumber(value: string): number | null {
   const normalized = value.replace(/[,$\s]/g, "");
   const multiplier = /k$/i.test(normalized) ? 1_000 : 1;

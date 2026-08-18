@@ -42,4 +42,30 @@ export { runBulkProbe } from "./runner";
 export type { BulkProbeOptions, BulkProbeResult } from "./runner";
 export { upsertVerifiedCompanies } from "./store";
 export type { DiscoveryUpsertResult } from "./store";
+export { extractReverseAtsCandidates } from "./reverse-url";
+export {
+  adzunaDiscoveryConfig,
+  AdzunaDiscoveryError,
+  parseAdzunaResponse,
+  searchAdzuna,
+} from "./adzuna";
+export type {
+  AdzunaDiscoveryConfig,
+  AdzunaSearchDependencies,
+  AdzunaSearchOptions,
+} from "./adzuna";
+export {
+  adzunaCredentials,
+  adzunaSearchFromProfile,
+  discoverAutomaticCandidates,
+  mergeAutomaticCandidates,
+} from "./automatic";
+export type {
+  AdzunaCredentials,
+  AdzunaDiscoveryStatus,
+  AutomaticDiscoveryDependencies,
+  AutomaticDiscoveryOptions,
+  AutomaticDiscoveryResult,
+  DiscoveryProfile,
+} from "./automatic";
 export { companySlug, slugVariants } from "./slugify";

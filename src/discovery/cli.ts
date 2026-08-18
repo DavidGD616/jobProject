@@ -7,7 +7,7 @@ import "dotenv/config";
 import {
   createNegativeProbeCache,
   createDiscoveryVerifier,
-  discoverHnHiring,
+  discoverAutomaticCandidates,
   discoveryProbeConfig,
   loadNegativeProbeCache,
   runBulkProbe,
@@ -30,9 +30,10 @@ interface CliOptions {
 function usage(): string {
   return `Usage: pnpm discover:seed -- [options]
 
-Read the latest 36 Hacker News "Who is hiring?" threads, extract
-top-level listings with direct official ATS URLs, verify those boards, and
-upsert verified companies into SQLite.
+Read the latest 36 Hacker News "Who is hiring?" threads and, when Adzuna
+credentials are configured, search from the active profile's role and location.
+Every resulting candidate is verified against its official ATS board before it
+is upserted into SQLite.
 
 Options:
   --hn-story-id <id>  Use a specific HN hiring-thread ID (for reproducible runs)
@@ -41,6 +42,8 @@ Options:
   --cache <path>      Negative probe cache (default: ${DEFAULT_CACHE_PATH})
   --report <path>     Detailed probe diagnostics (default: ${DEFAULT_REPORT_PATH})
   --refresh-cache     Ignore cached 404s for this run
+                     Optional Adzuna: set ADZUNA_APP_ID and ADZUNA_API_KEY.
+                     ADZUNA_COUNTRY defaults to us.
   --help, -h          Show this help
 `;
 }
@@ -108,16 +111,35 @@ export async function main(args: readonly string[] = process.argv.slice(2)) {
     return 0;
   }
 
-  const discoveredCandidates = await discoverHnHiring({
-    storyId: options.hnStoryId,
+  const { db } = await import("../db");
+  const { getActiveProfile } = await import("../matching");
+  const discovered = await discoverAutomaticCandidates({
+    hnStoryId: options.hnStoryId,
+    profile: getActiveProfile(db),
   });
+  if (discovered.sources.adzuna.status === "skipped_missing_credentials") {
+    console.error(
+      "Adzuna discovery skipped: set both ADZUNA_APP_ID and ADZUNA_API_KEY to enable it.",
+    );
+  } else if (discovered.sources.adzuna.status === "skipped_missing_profile_query") {
+    console.error(
+      "Adzuna discovery skipped: save a target role in the profile to enable its automatic query.",
+    );
+  } else if (discovered.sources.adzuna.status === "failed") {
+    console.error(
+      "Adzuna discovery failed; continuing with the independent HN source.",
+    );
+  }
+  const discoveredCandidates = discovered.candidates;
   const candidates = options.maxCandidates
     ? discoveredCandidates.slice(0, options.maxCandidates)
     : discoveredCandidates;
   if (candidates.length === 0) {
-    throw new Error(
-      "HN hiring threads did not contain any top-level listings with a supported ATS URL and a company heading that matches its board token",
+    console.error(
+      "No automatic discovery candidates were found. Update the profile to enable its role-based aggregator query, or retry when a current HN hiring thread is available.",
     );
+    console.log(JSON.stringify({ discovered: 0, sources: discovered.sources }, null, 2));
+    return 1;
   }
 
   const negativeCache = options.refreshCache
@@ -134,6 +156,7 @@ export async function main(args: readonly string[] = process.argv.slice(2)) {
     attempts.filter((attempt) => attempt.outcome === outcome).length;
   const summary = {
     discovered: discoveredCandidates.length,
+    sources: discovered.sources,
     candidates: result.candidates,
     processed: result.processed,
     verified: result.verified.length,
@@ -162,7 +185,6 @@ export async function main(args: readonly string[] = process.argv.slice(2)) {
     return 1;
   }
 
-  const { db } = await import("../db");
   const stored = upsertVerifiedCompanies(db, result.verified, new Date());
   console.log(
     JSON.stringify(

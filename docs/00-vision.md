@@ -1,6 +1,6 @@
 # 00 — Vision
 
-**Status:** Draft · **Last updated:** 2026-08-13
+**Status:** Current · **Last updated:** 2026-08-17
 
 ## Problem
 
@@ -25,7 +25,11 @@ Two constraints are chosen, not incidental. They shape the architecture more tha
 
 **LLM work goes through installed AI CLIs, not a hosted API** ([ADR-0007](adr/0007-llm-via-cli-subprocess.md)). `claude`, `codex`, and `opencode` are already installed and already paid for. No API key lives in this project.
 
-The cost is latency: 5–30s per invocation instead of ~2s. Everything LLM-dependent is therefore batched, cached, and kept off the request path. A useful side effect — the system must work when no CLI is available, so ingest, dedup, filtering, lexical ranking, and tracking all run with zero LLM calls.
+The cost is latency: 5–30s per invocation instead of ~2s. Everything
+LLM-dependent is cached and kept off the request path; reranking is batched
+where that amortizes CLI cost. A useful side effect — the system must work when
+no CLI is available, so ingest, dedup, filtering, lexical ranking, and tracking
+all run with zero LLM calls.
 
 ## Scope tiers
 
@@ -37,7 +41,9 @@ Discover companies, pull their postings into one deduplicated database, filter a
 *Done when:* a single query surfaces fresh, deduplicated openings across ≥300 companies without opening a browser tab — and the user never had to name one of them ([ADR-0010](adr/0010-company-discovery.md)).
 
 ### Tier B — Matcher
-Score every job against a structured profile. Surface a short ranked list with reasons and gaps. Retrieval is lexical, reranking is a batched CLI call.
+Score indexed candidates against a structured profile. Surface a short ranked
+list with reasons and gaps. Retrieval is local FTS5/BM25 plus structured
+features; reranking is a batched CLI call.
 
 *Done when:* the daily top-20 list is good enough that manual browsing stops.
 
@@ -53,7 +59,9 @@ Tailor resume and cover letter per job. Track the pipeline. Assist form fill. Re
 - **Multi-user / hosted service.** Single-tenant, local-only by design.
 - **Hosted LLM APIs.** No API key in this project — the installed CLIs are the interface.
 - **Local model runtimes.** No Ollama, no ONNX weights, no embedding model. Out of scope for now; the consequence is [ADR-0008](adr/0008-no-embeddings-lexical-retrieval.md).
-- **Fabricating experience.** Tailoring reorders, reweights, and rephrases real facts from the profile. It never invents skills, titles, or dates.
+- **Fabricating experience.** Tailoring selects and reorders real profile facts;
+  its cover-letter draft is grounded in them. It never invents skills, titles,
+  dates, metrics, technologies, or outcomes.
 - **Beating ATS keyword filters via stuffing.** Keyword alignment is a side effect of honest tailoring, not the objective.
 
 ## Success metrics

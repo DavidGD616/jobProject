@@ -98,4 +98,5 @@ At 5–30s per invocation, a cache miss that should have been a hit is the most 
 
 Append findings here as they surface. This section is the reason the skill exists.
 
-- _(none yet — populate during Phase 1.5)_
+- `claude` 2.1.233: `-p`, `--output-format json`, `--allowedTools ""`, `--bare`, and `--no-session-persistence`.
+- `codex` 0.147.0: `exec --sandbox read-only --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check`; this version does not accept the older `--ask-for-approval` or `--no-alt-screen` flags.
