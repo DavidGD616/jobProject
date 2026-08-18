@@ -80,7 +80,7 @@ Small, unglamorous, high daily value. Do it before tailoring — it pays off fro
 
 Tier C, first half.
 
-- ✅ Evidence-grounded target headline, summary, project/skill focus, and complete work-history retention from real facts only; source bullets are prioritized, never deleted, and user-featured projects lead ([ADR-0013](adr/0013-complete-work-history-tailoring.md))
+- ✅ Every selected role receives a one-title, evidence-grounded resume and draft letter from real facts only; source bullets are prioritized, never deleted, user-featured projects lead, and fit gaps stay review information ([ADR-0013](adr/0013-complete-work-history-tailoring.md), [ADR-0014](adr/0014-tailor-every-selected-role.md))
 - ✅ Job-aware, evidence-grounded cover-letter draft, human-edited in the UI
 - ✅ HTML and optional local Chromium PDF rendering from `resume_json`
 - ✅ `resume_variants` — every export is tied to its destination with profile/job/prompt provenance and a visible fit/gap explanation

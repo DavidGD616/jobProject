@@ -26,6 +26,7 @@ Seven accepted decisions do more to determine the design than any feature does. 
 - [ADR-0010](adr/0010-company-discovery.md) — the company list is discovered, never hand-written
 - [ADR-0011](adr/0011-profile-guided-explore-candidates.md) — Explore is broad and profile-guided; source snapshots remain complete
 - [ADR-0013](adr/0013-complete-work-history-tailoring.md) — tailoring retains complete work history and uses explicit project presentation facts
+- [ADR-0014](adr/0014-tailor-every-selected-role.md) — every selected role receives a truthful targeted draft; gaps remain review information
 
 ## Decisions
 

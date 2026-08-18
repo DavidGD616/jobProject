@@ -116,16 +116,19 @@ The `/tailor` UI never launches Chromium or calls an LLM. It creates one active
 `tailor_requests` row per job; `pnpm tailor -- --next` claims the oldest queued
 row, creates the variant, renders its local export, and marks the request
 completed or failed. The worker builds an evidence-grounded plan from stored
-facts: a separate target-role headline and summary, focused projects and
-skills, a complete work history, and a job-aware draft letter. It puts direct
+facts: one target-role title and summary, focused projects and skills, a
+complete work history, and a job-aware draft letter. It puts direct
 and transferable source facts first but retains every saved role, employer
 title, date, and bullet. A user-authored featured project is always included
 ahead of relevance-ranked projects; the worker never infers feature status or
 recency from project-array order. It records its evidence map, fit/gap
-assessment, profile version, job hash, and prompt version with the variant. It
-never changes historical facts, and the UI keeps the letter human-editable
-while flagging stale form-checklist snapshots. Rendering preserves the existing
-Harvard resume template ([ADR-0013](adr/0013-complete-work-history-tailoring.md)).
+assessment, profile version, job hash, and prompt version with the variant. A
+fit assessment is review information, not a generic-material fallback: every
+selected role receives the strongest truthful draft. It never changes historical
+facts, and the UI keeps the letter human-editable while flagging stale
+form-checklist snapshots. Rendering preserves the existing Harvard resume
+template ([ADR-0013](adr/0013-complete-work-history-tailoring.md),
+[ADR-0014](adr/0014-tailor-every-selected-role.md)).
 
 `SourceFetchResult` distinguishes `{ kind: "fetched", postings, etag }` from
 `{ kind: "not_modified", etag }`. The scheduled poller persists each ETag by

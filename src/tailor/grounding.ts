@@ -6,7 +6,7 @@ import type {
 } from "@/db/schema";
 
 /** Bump whenever the structured tailoring contract or factual rules change. */
-export const TAILOR_PROMPT_VERSION = "tailor-v7";
+export const TAILOR_PROMPT_VERSION = "tailor-v8";
 
 type RequirementKind = "skill" | "clearance" | "citizenship" | "years" | "seniority" | "role";
 
@@ -653,7 +653,7 @@ function fitAssessment(input: {
     ? `Strong factual evidence was found for this role (${evidenceCount} traceable matches).`
     : level === "caution"
       ? `Some relevant evidence was found (${evidenceCount} traceable matches), with gaps to review before applying.`
-      : `The profile does not support a persuasive tailored application for this role (${evidenceCount} traceable matches).`;
+      : `Some role requirements are not documented in the profile (${evidenceCount} traceable matches); review the listed gaps before applying.`;
   return { level, summary, gaps, evidenceCount };
 }
 
@@ -761,21 +761,6 @@ export function limitSelections(plan: GroundedTailoringPlan, selections: TailorS
   return limited;
 }
 
-function canUseTargetTitle(profile: Profile, jobTitle: string, assessment: TailorFitAssessment): boolean {
-  if (assessment.level === "low") return false;
-  const sourceTerms = new Set(terms([
-    profile.resumeJson.headline,
-    ...profile.titleAliases,
-    ...(profile.resumeJson.experience ?? []).map((item) => item.title),
-    ...(profile.resumeJson.projects ?? []).map((item) => item.name),
-    ...canonicalSkills(profile),
-  ].filter(Boolean).join(" ")));
-  const targetTerms = terms(jobTitle);
-  const meaningful = targetTerms.filter((term) => !genericTitleTerms.has(term));
-  const overlap = meaningful.filter((term) => sourceTerms.has(term));
-  return normalizedText(sourceText(profile)).includes(normalizedText(jobTitle)) || overlap.length >= 1 || targetTerms.filter((term) => sourceTerms.has(term)).length >= 2;
-}
-
 function sentence(value: string): string {
   const trimmed = value.trim().replace(/[.?!]+$/g, "");
   return trimmed ? `${trimmed}.` : "";
@@ -832,15 +817,6 @@ export function resumeFromPlan(input: {
 }): ResumeProfileJson {
   const selections = input.selections ?? input.plan.selections;
   const resume = input.profile.resumeJson;
-  if (input.plan.fitAssessment.level === "low") {
-    // A low-fit result is a warning, not permission to make arbitrary
-    // selections. Preserve the source resume while keeping its factual skills
-    // readable when they are stored separately on the profile.
-    return {
-      ...resume,
-      skills: (resume.skills?.length ? resume.skills : canonicalSkills(input.profile)).map(displaySkill),
-    };
-  }
   const selectedSkills = [...selections.skills]
     .sort((left, right) => (input.plan.skillScores.get(right) ?? 0) - (input.plan.skillScores.get(left) ?? 0) || left.localeCompare(right));
   const displaySkills = selectedSkills.map(displaySkill);
@@ -870,15 +846,13 @@ export function resumeFromPlan(input: {
     // intact. Target-specific and transferable facts are merely foregrounded.
     return { ...experience, bullets: orderedBullets };
   });
-  const useTargetTitle = canUseTargetTitle(input.profile, input.jobTitle, input.plan.fitAssessment);
-  const baseHeadline = resume.headline ?? input.profile.titleAliases[0];
-  const headline = useTargetTitle
-    ? [input.jobTitle, displaySkills.slice(0, 4).join(", ")].filter(Boolean).join(" | ")
-    : [baseHeadline, displaySkills.slice(0, 3).join(", ")].filter(Boolean).join(" | ");
+  // The top headline is a single, application-specific target title. This is
+  // presentation context, not a rewrite of historic experience titles.
+  const headline = input.jobTitle.trim();
   const projectNames = selectedProjects.map((project) => project.name).slice(0, 3);
   const targetedSummary = [
     sourceSummary(resume),
-    displaySkills.length > 0 ? sentence(`Relevant stack${useTargetTitle ? ` for this ${input.jobTitle} role` : ""}: ${displaySkills.slice(0, 5).join(", ")}`) : "",
+    displaySkills.length > 0 ? sentence(`Relevant stack for this ${input.jobTitle} role: ${displaySkills.slice(0, 5).join(", ")}`) : "",
     projectNames.length > 0 ? sentence(`Relevant projects include ${projectNames.join(", ")}`) : "",
   ].filter(Boolean).join(" ");
   return {
@@ -962,11 +936,11 @@ export function groundedCoverLetter(input: {
   jobTitle: string;
   plan: GroundedTailoringPlan;
 }): string | null {
-  if (input.plan.fitAssessment.level === "low") return null;
   const facts = coverLetterFacts(input.plan.evidenceMap);
-  // A factual letter needs at least two selected work/project facts. Anything
-  // less tends to fall back to generic persuasion, which we intentionally do
-  // not generate.
+  // A low-fit assessment records gaps separately. It does not invalidate
+  // factual project or work evidence that can truthfully support a letter.
+  // A letter still needs two selected work/project facts; anything less tends
+  // to fall back to generic persuasion, which we intentionally do not write.
   if (facts.length < 2) return null;
   const jobFocus = [...new Set(input.plan.evidenceMap
     .filter((item) => item.source === "skill" && item.requirement !== input.jobTitle)

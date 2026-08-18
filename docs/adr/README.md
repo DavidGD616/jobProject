@@ -19,6 +19,7 @@ One file per decision. Numbered, immutable once `Accepted`.
 | [0011](0011-profile-guided-explore-candidates.md) | Profile-guided Explore candidates | Accepted |
 | [0012](0012-evidence-grounded-tailoring.md) | Evidence-grounded application tailoring | Superseded by [0013](0013-complete-work-history-tailoring.md) |
 | [0013](0013-complete-work-history-tailoring.md) | Complete work-history tailoring | Accepted |
+| [0014](0014-tailor-every-selected-role.md) | Tailor every selected role from truthful evidence | Accepted |
 
 ## Rules
 

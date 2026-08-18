@@ -144,7 +144,7 @@ test("deterministic tailoring changes the target role evidence without changing 
       const resume = tailored.variant.resumeJson;
 
       assert.equal(tailored.llmUsed, false);
-      assert.match(resume.headline ?? "", /^Full Stack Software Engineer \|/);
+      assert.equal(resume.headline, "Full Stack Software Engineer");
       assert.match(resume.summary ?? "", /Relevant stack for this Full Stack Software Engineer role/i);
       assert.ok((resume.projects?.length ?? 0) >= 2);
       assert.ok((resume.projects?.length ?? 0) <= 3);
@@ -165,7 +165,7 @@ test("deterministic tailoring changes the target role evidence without changing 
       ]);
       assert.equal(tailored.variant.profileVersion, profile.version);
       assert.equal(tailored.variant.jobContentHash, job.contentHash);
-      assert.equal(tailored.variant.promptVersion, "tailor-v7");
+      assert.equal(tailored.variant.promptVersion, "tailor-v8");
       assert.equal(tailored.variant.fitAssessment?.level, "strong");
       assert.ok((tailored.variant.evidenceMap ?? []).some((item) => item.source === "project"));
       assert.ok((tailored.variant.evidenceMap ?? []).some((item) => item.source === "experience"));
@@ -236,7 +236,7 @@ test("tailoring retains historical work while foregrounding transferable facts a
       const tailored = await createTailoredVariant({ jobId: job.id, profile, database: db, allowLlm: false, now });
       const resume = tailored.variant.resumeJson;
 
-      assert.match(resume.headline ?? "", /^Full Stack Software Engineer \|/);
+      assert.equal(resume.headline, "Full Stack Software Engineer");
       assert.equal(resume.experience?.[0]?.title, "Digital Design & Production Specialist");
       assert.equal(resume.experience?.[0]?.company, "TaylorMade Golf");
       assert.equal(resume.experience?.[0]?.startDate, "2021");
@@ -414,7 +414,9 @@ test("LLM source selections merge repeated experience references against origina
       assert.equal(tailored.llmUsed, true);
       assert.match(prompt, /fact-grounded tailoring PLAN/i);
       assert.match(prompt, /Every historic experience entry and bullet remains/i);
+      assert.match(prompt, /exactly one top headline/i);
       assert.match(prompt, /selected_bullets only to rank source facts/i);
+      assert.match(prompt, /Tailor every role, including one with documented gaps/i);
       assert.ok(outputSchema);
       const schemaProperties = outputSchema.properties as Record<string, unknown>;
       const schemaRequired = outputSchema.required as string[];
@@ -428,15 +430,16 @@ test("LLM source selections merge repeated experience references against origina
       assert.equal(resume.experience?.[0]?.startDate, "2022");
       assert.equal(resume.experience?.[0]?.endDate, "Present");
       assert.doesNotMatch(resume.headline ?? "", /Chief Architect/);
+      assert.equal(resume.headline, "TypeScript Engineer");
       assert.ok(!resume.skills?.includes("not-a-profile-skill"));
-      assert.equal(tailored.variant.promptVersion, "tailor-v7");
+      assert.equal(tailored.variant.promptVersion, "tailor-v8");
     } finally {
       sqlite.close();
     }
   });
 });
 
-test("Ruby, clearance, and seniority gaps produce a low-fit warning instead of a misleading letter", async () => {
+test("Ruby, clearance, and seniority gaps retain a low-fit review while producing grounded materials", async () => {
   const { db, sqlite } = createTestDatabase();
   await withExportDirectory(async () => {
     try {
@@ -445,7 +448,7 @@ test("Ruby, clearance, and seniority gaps produce a low-fit warning instead of a
         db,
         now,
         title: "Senior Ruby Platform Engineer",
-        description: "Requires 5+ years of professional Ruby on Rails experience and an active Secret clearance. Build secure platform services.",
+        description: "Requires 5+ years of professional Ruby on Rails experience and an active Secret clearance. Build secure platform services with TypeScript and React for customer workflows.",
       });
       const profile = technicalProfile(db, now);
       // Ruby is deliberately not part of the saved profile facts for this role.
@@ -462,13 +465,17 @@ test("Ruby, clearance, and seniority gaps produce a low-fit warning instead of a
       assert.match(tailored.variant.fitAssessment?.gaps.join(" ") ?? "", /Ruby/i);
       assert.match(tailored.variant.fitAssessment?.gaps.join(" ") ?? "", /clearance/i);
       assert.match(tailored.variant.fitAssessment?.gaps.join(" ") ?? "", /years|senior/i);
-      assert.equal(tailored.variant.resumeJson.headline, "Full-Stack Software Engineer");
-      assert.equal(tailored.variant.resumeJson.summary, "Full-stack developer who builds web applications and APIs.");
-      assert.equal(tailored.variant.coverLetter, null);
+      assert.match(tailored.variant.fitAssessment?.summary ?? "", /requirements are not documented/i);
+      assert.equal(tailored.variant.resumeJson.headline, "Senior Ruby Platform Engineer");
+      assert.match(tailored.variant.resumeJson.summary ?? "", /Relevant stack for this Senior Ruby Platform Engineer role/i);
+      assert.match(tailored.variant.resumeJson.summary ?? "", /TypeScript/i);
+      assert.match(tailored.variant.coverLetter ?? "", /Senior Ruby Platform Engineer/);
+      assert.match(tailored.variant.coverLetter ?? "", /Customer Portal|Workflow API|Old Co/);
+      assert.doesNotMatch(tailored.variant.coverLetter ?? "", /Rails|clearance|5\+ years/i);
       assert.equal(tailored.variant.resumeJson.experience?.[0]?.title, "Software Engineer");
       assert.equal(tailored.variant.resumeJson.experience?.[0]?.startDate, "2022");
       assert.equal(tailored.variant.resumeJson.experience?.[0]?.bullets.length, 3);
-      assert.deepEqual(tailored.variant.resumeJson.projects?.map((project) => project.name), ["Customer Portal", "Workflow API", "Mobile Sketchbook"]);
+      assert.deepEqual(tailored.variant.resumeJson.projects?.map((project) => project.name), ["Customer Portal"]);
       assert.ok(!tailored.variant.resumeJson.skills?.includes("ruby"));
     } finally {
       sqlite.close();
