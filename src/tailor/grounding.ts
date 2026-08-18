@@ -6,7 +6,7 @@ import type {
 } from "@/db/schema";
 
 /** Bump whenever the structured tailoring contract or factual rules change. */
-export const TAILOR_PROMPT_VERSION = "tailor-v8";
+export const TAILOR_PROMPT_VERSION = "tailor-v9";
 
 type RequirementKind = "skill" | "clearance" | "citizenship" | "years" | "seniority" | "role";
 
@@ -69,6 +69,45 @@ const ignoredTerms = new Set([
 const genericTitleTerms = new Set([
   "associate", "developer", "engineer", "full", "junior", "lead", "level", "mid", "principal", "senior", "software", "staff", "stack",
 ]);
+
+const headlineRoleWords = new Set([
+  "administrator", "analyst", "architect", "consultant", "coordinator", "designer", "developer",
+  "director", "engineer", "lead", "manager", "operation", "operations", "operator", "producer", "researcher",
+  "scientist", "specialist", "strategist", "writer",
+]);
+
+const headlineGenericWords = new Set([
+  "developer", "engineer", "professional", "software",
+]);
+
+const headlineSeniorityWords = new Set([
+  "chief", "director", "head", "lead", "manager", "principal", "senior", "staff", "vp",
+]);
+
+const headlineUnsafeTerms = /\b(?:clearance|citizen(?:ship)?|eligible|authorization|visa|certified|certification|years?|yrs?)\b/i;
+
+const headlineRoleFamilies = [
+  ["architect", "developer", "engineer", "programmer"],
+  ["creative", "design", "designer", "production", "ui", "ux", "visual"],
+  ["deployment", "delivery", "implementation", "operation", "operations", "operator"],
+  ["analyst", "data", "research", "scientist"],
+  ["manager", "owner", "product", "strategy", "strategist"],
+  ["customer", "success", "support", "technical"],
+];
+
+const headlineRoleQualifierWords = new Set([
+  ...headlineRoleFamilies.flat(),
+  "application", "backend", "customer", "delivery", "frontend", "full", "mobile",
+  "platform", "quality", "stack", "systems", "web", "workflow",
+]);
+
+const headlineFactVariants: Record<string, string[]> = {
+  deployment: ["deploy", "deployed", "deploying", "deployment"],
+  delivery: ["deliver", "delivered", "delivering", "delivery"],
+  implementation: ["implement", "implemented", "implementing", "implementation"],
+  operation: ["operate", "operated", "operating", "operation", "operations", "operational"],
+  operations: ["operate", "operated", "operating", "operation", "operations", "operational"],
+};
 
 const skillDisplayTokens: Record<string, string> = {
   ai: "AI",
@@ -148,6 +187,205 @@ function normalizedText(value: string): string {
 
 function terms(value: string): string[] {
   return [...new Set(normalizedText(value).split(/\s+/).filter((term) => term.length > 2 && !ignoredTerms.has(term)))];
+}
+
+/**
+ * Headline words intentionally keep role nouns such as "engineer" that the
+ * ranking tokenizer omits. They are used only to verify a proposed top title,
+ * never as evidence for a job requirement.
+ */
+function headlineWords(value: string): string[] {
+  return [...new Set(normalizedText(value).split(/\s+/).filter((word) => word.length > 1 && word !== "and" && word !== "the"))];
+}
+
+function wordsOverlap(left: readonly string[], right: readonly string[]): number {
+  const rightWords = new Set(right);
+  return left.filter((word) => rightWords.has(word)).length;
+}
+
+function roleFamilies(value: string): Set<number> {
+  const words = new Set(headlineWords(value));
+  return new Set(headlineRoleFamilies.flatMap((family, index) => (
+    family.some((word) => words.has(word)) ? [index] : []
+  )));
+}
+
+function sharesRoleFamily(left: string, right: string): boolean {
+  const leftFamilies = roleFamilies(left);
+  return [...roleFamilies(right)].some((family) => leftFamilies.has(family));
+}
+
+function supportedProfileTitles(profile: Profile): string[] {
+  const candidates = [
+    profile.resumeJson.headline,
+    ...profile.titleAliases,
+    ...(profile.resumeJson.experience ?? []).map((experience) => experience.title),
+  ].flatMap((value) => value ? [value.trim()] : []);
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = normalizedText(candidate);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Return a short single-title string or null when an LLM answer is unsafe. */
+function sanitizeHeadline(value: string): string | null {
+  if (/\r|\n/.test(value)) return null;
+  const headline = value.trim().replace(/\s+/g, " ");
+  if (headline.length < 3 || headline.length > 96) return null;
+  if (/[|,;:!?<>\[\]{}]/.test(headline)) return null;
+  if (/https?:\/\/|www\.|@/i.test(headline) || /\d/.test(headline) || headlineUnsafeTerms.test(headline)) return null;
+  if (!/^[\p{L}][\p{L}\p{M}\p{N}+#.&'’()\- ]*$/u.test(headline)) return null;
+  if (/\s\/\s|\b(?:or)\b/i.test(headline)) return null;
+  const words = headlineWords(headline);
+  if (words.length === 0 || words.length > 8) return null;
+  return headline.replace(/\.+$/, "") || null;
+}
+
+function headlineHasSupportedSeniority(headline: string, profileTitles: readonly string[]): boolean {
+  const proposedSeniority = headlineWords(headline).filter((word) => headlineSeniorityWords.has(word));
+  if (proposedSeniority.length === 0) return true;
+  const supportedWords = new Set(profileTitles.flatMap(headlineWords));
+  return proposedSeniority.every((word) => supportedWords.has(word));
+}
+
+function profileTitleEvidenceText(profile: Profile): string {
+  const resume = profile.resumeJson;
+  return [
+    resume.headline,
+    resume.summary,
+    ...profile.titleAliases,
+    ...(resume.experience ?? []).flatMap((experience) => [experience.title, ...experience.bullets]),
+    ...(resume.projects ?? []).flatMap((project) => [project.name, project.description, ...(project.bullets ?? [])]),
+  ].filter(Boolean).join("\n");
+}
+
+function headlineWordHasProfileRoleEvidence(word: string, profile: Profile): boolean {
+  const evidenceWords = new Set(headlineWords(profileTitleEvidenceText(profile)));
+  return (headlineFactVariants[word] ?? [word]).some((variant) => evidenceWords.has(variant));
+}
+
+function headlineWordIsNamedTechnology(word: string): boolean {
+  return namedRequirements.some((requirement) => headlineWords(requirement.label).includes(word));
+}
+
+function headlineIsProfileSupported(input: {
+  headline: string;
+  profile: Profile;
+  profileTitles: readonly string[];
+  jobTitle: string;
+  description: string;
+}): boolean {
+  const proposedWords = headlineWords(input.headline);
+  const profileWords = new Set(input.profileTitles.flatMap(headlineWords));
+  const jobWords = new Set(headlineWords(`${input.jobTitle} ${input.description}`));
+  const hasTitleOverlap = wordsOverlap(proposedWords, [...profileWords]) > 0;
+  if (!hasTitleOverlap) return false;
+  return proposedWords.every((word) => {
+    if (profileWords.has(word) || headlineGenericWords.has(word)) return true;
+    // A transferable role qualifier (for example "deployment") is allowed
+    // only when it is both in the target role and documented in the candidate's
+    // saved work/project facts. Named technologies remain invalid here unless
+    // they are part of a saved title, so a skill alone cannot become a title.
+    return !headlineWordIsNamedTechnology(word)
+      && headlineRoleQualifierWords.has(word)
+      && jobWords.has(word)
+      && headlineWordHasProfileRoleEvidence(word, input.profile);
+  });
+}
+
+function headlineFitsRole(headline: string, jobTitle: string, description: string): boolean {
+  if (sharesRoleFamily(headline, `${jobTitle} ${description}`)) return true;
+  const roleWords = headlineWords(`${jobTitle} ${description}`);
+  return headlineWords(headline)
+    .filter((word) => !headlineGenericWords.has(word) && !headlineSeniorityWords.has(word))
+    .some((word) => roleWords.includes(word));
+}
+
+function formatFallbackHeadline(value: string): string {
+  if (value !== value.toLowerCase()) return value;
+  const specialWords: Record<string, string> = {
+    ai: "AI",
+    api: "API",
+    cto: "CTO",
+    devops: "DevOps",
+    ios: "iOS",
+    qa: "QA",
+    ui: "UI",
+    ux: "UX",
+  };
+  return value.split(/(\s+)/).map((part) => {
+    if (/^\s+$/.test(part)) return part;
+    return part.split("-").map((word) => {
+      const special = specialWords[word.toLowerCase()];
+      return special ?? `${word[0]!.toUpperCase()}${word.slice(1).toLowerCase()}`;
+    }).join("-");
+  }).join("");
+}
+
+function conciseJobHeadline(jobTitle: string): string {
+  let words = jobTitle
+    .split(/\s[-–—|]\s/)[0]!
+    .replace(/[^\p{L}\p{N}+#.&'’()\- ]/gu, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const seniorityIndex = words.findIndex((word) => headlineSeniorityWords.has(normalizedText(word)));
+  if (seniorityIndex >= 0) words = words.slice(seniorityIndex + 1);
+  while (["protege", "intern", "internship", "graduate"].includes(normalizedText(words[0] ?? ""))) words = words.slice(1);
+  const anchor = words.reduce((last, word, index) => (
+    headlineRoleWords.has(normalizedText(word)) ? index : last
+  ), -1);
+  if (anchor >= 0) words = words.slice(Math.max(0, anchor - 3), anchor + 1);
+  const candidate = sanitizeHeadline(words.join(" "));
+  return candidate ? formatFallbackHeadline(candidate) : "Professional";
+}
+
+/**
+ * Choose one truthful, concise target headline. An LLM may propose the title,
+ * but only a title grounded in saved profile titles and compatible with the
+ * target role is used. Otherwise a deterministic profile-title fallback wins.
+ */
+export function resolveTargetHeadline(input: {
+  profile: Profile;
+  jobTitle: string;
+  description: string;
+  proposedHeadline?: string | null;
+}): string {
+  const profileTitles = supportedProfileTitles(input.profile)
+    .map(sanitizeHeadline)
+    .filter((title): title is string => Boolean(title));
+  const proposal = input.proposedHeadline ? sanitizeHeadline(input.proposedHeadline) : null;
+  if (
+    proposal
+    && headlineHasSupportedSeniority(proposal, profileTitles)
+    && headlineIsProfileSupported({
+      headline: proposal,
+      profile: input.profile,
+      profileTitles,
+      jobTitle: input.jobTitle,
+      description: input.description,
+    })
+    && headlineFitsRole(proposal, input.jobTitle, input.description)
+  ) return proposal;
+
+  const scoredTitles = profileTitles.map((title, index) => {
+    const titleWords = headlineWords(title);
+    const roleWords = headlineWords(`${input.jobTitle} ${input.description}`);
+    const roleTitleWords = headlineWords(input.jobTitle);
+    const roleCompatible = headlineFitsRole(title, input.jobTitle, input.description);
+    const score = (roleCompatible ? 100 : 0)
+      + wordsOverlap(titleWords, roleTitleWords) * 20
+      + wordsOverlap(titleWords, roleWords) * 4
+      - Math.max(0, titleWords.length - 4)
+      - (title.includes("&") ? 2 : 0)
+      - index / 100;
+    return { title, roleCompatible, score };
+  }).sort((left, right) => right.score - left.score);
+  const fallback = scoredTitles.find((candidate) => candidate.roleCompatible) ?? scoredTitles[0];
+  return fallback ? formatFallbackHeadline(fallback.title) : conciseJobHeadline(input.jobTitle);
 }
 
 function isOptionalMention(text: string, matchIndex: number): boolean {
@@ -812,6 +1050,10 @@ function orderedExperienceBulletIndices(input: {
 export function resumeFromPlan(input: {
   profile: Profile;
   jobTitle: string;
+  /** The LLM's untrusted suggestion for the one top-of-resume target title. */
+  proposedHeadline?: string | null;
+  /** Lets direct callers use the same deterministic title fallback as the worker. */
+  description?: string;
   plan: GroundedTailoringPlan;
   selections?: TailorSelections;
 }): ResumeProfileJson {
@@ -848,11 +1090,16 @@ export function resumeFromPlan(input: {
   });
   // The top headline is a single, application-specific target title. This is
   // presentation context, not a rewrite of historic experience titles.
-  const headline = input.jobTitle.trim();
+  const headline = resolveTargetHeadline({
+    profile: input.profile,
+    jobTitle: input.jobTitle,
+    description: input.description ?? input.jobTitle,
+    proposedHeadline: input.proposedHeadline,
+  });
   const projectNames = selectedProjects.map((project) => project.name).slice(0, 3);
   const targetedSummary = [
     sourceSummary(resume),
-    displaySkills.length > 0 ? sentence(`Relevant stack for this ${input.jobTitle} role: ${displaySkills.slice(0, 5).join(", ")}`) : "",
+    displaySkills.length > 0 ? sentence(`Relevant stack for this ${headline} role: ${displaySkills.slice(0, 5).join(", ")}`) : "",
     projectNames.length > 0 ? sentence(`Relevant projects include ${projectNames.join(", ")}`) : "",
   ].filter(Boolean).join(" ");
   return {

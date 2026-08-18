@@ -1,6 +1,6 @@
 # ADR-0014 — Tailor every selected role from truthful evidence
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-0015](0015-profile-grounded-target-headlines.md)
 **Date:** 2026-08-18
 
 ## Context

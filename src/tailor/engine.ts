@@ -45,16 +45,17 @@ const llmEvidenceSchema = z.object({
 
 /**
  * The model can propose source references and an optional narrative. The
- * engine only applies valid source references: prose is generated from those
- * source facts deterministically, so an LLM cannot invent claims or edit a
- * historic job title/date.
+ * engine only applies valid source references and a validated headline
+ * suggestion. Prose is generated from those source facts deterministically,
+ * so an LLM cannot invent claims or edit a historic job title/date.
  */
 export const tailorResponseSchema = z.object({
   selected_bullets: z.array(selectedBulletsSchema),
   project_indices: z.array(z.number().int().min(0)).max(8),
   selected_project_bullets: z.array(selectedProjectBulletsSchema),
   selected_skills: z.array(z.string().trim().min(1).max(160)).max(20),
-  headline: z.string().trim().min(1).max(180).nullable(),
+  /** One concise proposed target headline; it is separately grounded locally. */
+  headline: z.string().trim().min(1).max(96).nullable(),
   summary: z.string().trim().min(1).max(1_200).nullable(),
   cover_letter: z.string().trim().min(1).max(4_000).nullable(),
   evidence: z.array(llmEvidenceSchema).max(24),
@@ -92,9 +93,9 @@ function llmPrompt(profile: Profile, companyName: string, jobTitle: string, desc
   return [
     "Create a fact-grounded tailoring PLAN for a resume and cover letter.",
     "Use only the candidate facts supplied below. Never invent employers, job titles, dates, metrics, technologies, outcomes, clearance, citizenship, or years of experience.",
-    "Do not edit historic experience titles, employers, dates, or prose. Every historic experience entry and bullet remains in the final resume. The final resume uses exactly one top headline: the target role title supplied below, with no appended skills or alternate titles. Select only source indices and exact skill names supplied below. Multiple selected_bullets objects for the same experience are allowed and will be merged.",
+    "Do not edit historic experience titles, employers, dates, or prose. Every historic experience entry and bullet remains in the final resume. The final resume uses exactly one top headline: a concise candidate-facing title, not a copied job-posting label. For headline, propose the one title that best connects the role responsibilities to the candidate's saved title aliases, profile headline, and historic titles. It may simplify the posting wording, but must not add seniority, clearance, citizenship, years, credentials, technologies, employer names, skills lists, or alternate titles. Use null when no safe concise title is supported. Select only source indices and exact skill names supplied below. Multiple selected_bullets objects for the same experience are allowed and will be merged.",
     "Use selected_bullets only to rank source facts: prefer direct required skill or role evidence, then truthful transferable customer, design, delivery, or collaboration facts. Never imply that a transferable fact proves a named technology. Tailor every role, including one with documented gaps: select the strongest truthful source facts rather than returning generic material. Choose 2–3 relevant project_indices, up to 15 exact selected_skills, and relevant experience/project bullet indices. A project marked featured is a user-directed presentation priority and must remain selected; it will appear first in the final resume.",
-    "Return every JSON key required by the schema. Use empty arrays when no source is selected, and null for headline, summary, or cover_letter when no safe suggestion exists. headline, summary, cover_letter, and evidence are suggestions only; they must contain no unsupported claim, and the local engine independently validates source references and generates final factual prose.",
+    "Return every JSON key required by the schema. Use empty arrays when no source is selected, and null for headline, summary, or cover_letter when no safe suggestion exists. headline, summary, cover_letter, and evidence are suggestions only; the local engine validates the headline against saved profile facts, independently validates source references, and generates final factual prose.",
     `Target company: ${companyName}`,
     `Target role: ${jobTitle}`,
     `Job description: ${description.slice(0, 18_000)}`,
@@ -143,6 +144,7 @@ export async function createTailoredVariant(input: {
     jobTitle: row.job.title,
     description: row.job.description,
   });
+  let proposedHeadline: string | null = null;
   let llmUsed = false;
   if (input.allowLlm) {
     const result = await runStructured({
@@ -166,6 +168,7 @@ export async function createTailoredVariant(input: {
         plan,
         selections,
       });
+      proposedHeadline = result.value.headline;
       llmUsed = true;
     }
   }
@@ -173,6 +176,8 @@ export async function createTailoredVariant(input: {
   const resume = resumeFromPlan({
     profile: input.profile,
     jobTitle: row.job.title,
+    description: row.job.description,
+    proposedHeadline,
     plan,
   });
   const coverLetter = groundedCoverLetter({

@@ -11,7 +11,7 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { applicationRuns, applications, companies, contacts, events, extractionRules, jobs, llmRuns, matches, profiles, rankingFeedback, resumeVariants, sourcePolls, tailorRequests, triage } from "@/db/schema";
 import { saveProfile } from "@/matching";
 import { createTailoredVariant, resumeToHtml } from "@/tailor";
-import { buildGroundedTailoringPlan, mergeSelections, planWithSelections, resumeFromPlan } from "@/tailor/grounding";
+import { buildGroundedTailoringPlan, mergeSelections, planWithSelections, resolveTargetHeadline, resumeFromPlan } from "@/tailor/grounding";
 import type { LlmProvider, ProviderResult } from "@/llm";
 
 function createTestDatabase() {
@@ -144,8 +144,8 @@ test("deterministic tailoring changes the target role evidence without changing 
       const resume = tailored.variant.resumeJson;
 
       assert.equal(tailored.llmUsed, false);
-      assert.equal(resume.headline, "Full Stack Software Engineer");
-      assert.match(resume.summary ?? "", /Relevant stack for this Full Stack Software Engineer role/i);
+      assert.equal(resume.headline, "Full-Stack Software Engineer");
+      assert.match(resume.summary ?? "", /Relevant stack for this Full-Stack Software Engineer role/i);
       assert.ok((resume.projects?.length ?? 0) >= 2);
       assert.ok((resume.projects?.length ?? 0) <= 3);
       assert.deepEqual(resume.projects?.map((project) => project.name), ["Customer Portal", "Workflow API"]);
@@ -165,7 +165,7 @@ test("deterministic tailoring changes the target role evidence without changing 
       ]);
       assert.equal(tailored.variant.profileVersion, profile.version);
       assert.equal(tailored.variant.jobContentHash, job.contentHash);
-      assert.equal(tailored.variant.promptVersion, "tailor-v8");
+      assert.equal(tailored.variant.promptVersion, "tailor-v9");
       assert.equal(tailored.variant.fitAssessment?.level, "strong");
       assert.ok((tailored.variant.evidenceMap ?? []).some((item) => item.source === "project"));
       assert.ok((tailored.variant.evidenceMap ?? []).some((item) => item.source === "experience"));
@@ -236,7 +236,7 @@ test("tailoring retains historical work while foregrounding transferable facts a
       const tailored = await createTailoredVariant({ jobId: job.id, profile, database: db, allowLlm: false, now });
       const resume = tailored.variant.resumeJson;
 
-      assert.equal(resume.headline, "Full Stack Software Engineer");
+      assert.equal(resume.headline, "Full-Stack Software Engineer");
       assert.equal(resume.experience?.[0]?.title, "Digital Design & Production Specialist");
       assert.equal(resume.experience?.[0]?.company, "TaylorMade Golf");
       assert.equal(resume.experience?.[0]?.startDate, "2021");
@@ -309,6 +309,82 @@ test("all explicitly featured projects survive the normal relevance cap", () => 
   } finally {
     sqlite.close();
   }
+});
+
+test("headline policy accepts a grounded normalized role title and rejects unsupported seniority or technology", () => {
+  const { db, sqlite } = createTestDatabase();
+  try {
+    const now = new Date("2026-08-18T12:00:00.000Z");
+    const profile = technicalProfile(db, now);
+    const input = {
+      profile,
+      jobTitle: "Senior Ruby Platform Engineer",
+      description: "Build Ruby platform services with TypeScript and React.",
+    };
+
+    // Ruby is a saved skill, but it is not a saved professional title. A
+    // skill by itself must not turn into a stronger top-of-resume claim.
+    assert.equal(resolveTargetHeadline({ ...input, proposedHeadline: "Senior Ruby Platform Engineer" }), "Full-Stack Software Engineer");
+    assert.equal(resolveTargetHeadline({ ...input, proposedHeadline: "Ruby Software Engineer" }), "Full-Stack Software Engineer");
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("LLM may choose one concise role title grounded in transferable profile evidence", async () => {
+  const { db, sqlite } = createTestDatabase();
+  await withExportDirectory(async () => {
+    try {
+      const now = new Date("2026-08-18T12:00:00.000Z");
+      const job = insertCompanyAndJob({
+        db,
+        now,
+        title: "Hazard Zone Senior Deployment Lead",
+        description: "Lead operational deployments, coordinate delivery handoffs, and improve deployment workflows.",
+      });
+      const profile = saveProfile({
+        resumeJson: {
+          name: "Taylor Example",
+          headline: "Operations Lead",
+          summary: "Operations professional focused on reliable delivery.",
+          experience: [{
+            company: "Old Co",
+            title: "Production Coordinator",
+            bullets: ["Coordinated deployment readiness and operational handoffs across delivery teams."],
+          }],
+          education: [],
+          projects: [],
+        },
+        skills: [],
+        titleAliases: ["operations lead"],
+        skillAliases: {},
+        preferences: {},
+      }, db, now);
+      const tailored = await createTailoredVariant({
+        jobId: job.id,
+        profile,
+        database: db,
+        allowLlm: true,
+        providers: [fakeProvider(JSON.stringify({
+          selected_bullets: [{ experience_index: 0, bullet_indices: [0] }],
+          project_indices: [],
+          selected_project_bullets: [],
+          selected_skills: [],
+          headline: "Operations & Deployment Lead",
+          summary: null,
+          cover_letter: null,
+          evidence: [],
+        }))],
+        now,
+      });
+
+      assert.equal(tailored.variant.resumeJson.headline, "Operations & Deployment Lead");
+      assert.notEqual(tailored.variant.resumeJson.headline, job.title);
+      assert.equal(tailored.variant.resumeJson.experience?.[0]?.title, "Production Coordinator");
+    } finally {
+      sqlite.close();
+    }
+  });
 });
 
 test("an unrelated featured project and production bullet stay on the resume but out of the cover letter", async () => {
@@ -415,6 +491,7 @@ test("LLM source selections merge repeated experience references against origina
       assert.match(prompt, /fact-grounded tailoring PLAN/i);
       assert.match(prompt, /Every historic experience entry and bullet remains/i);
       assert.match(prompt, /exactly one top headline/i);
+      assert.match(prompt, /not a copied job-posting label/i);
       assert.match(prompt, /selected_bullets only to rank source facts/i);
       assert.match(prompt, /Tailor every role, including one with documented gaps/i);
       assert.ok(outputSchema);
@@ -430,9 +507,9 @@ test("LLM source selections merge repeated experience references against origina
       assert.equal(resume.experience?.[0]?.startDate, "2022");
       assert.equal(resume.experience?.[0]?.endDate, "Present");
       assert.doesNotMatch(resume.headline ?? "", /Chief Architect/);
-      assert.equal(resume.headline, "TypeScript Engineer");
+      assert.equal(resume.headline, "Full-Stack Software Engineer");
       assert.ok(!resume.skills?.includes("not-a-profile-skill"));
-      assert.equal(tailored.variant.promptVersion, "tailor-v8");
+      assert.equal(tailored.variant.promptVersion, "tailor-v9");
     } finally {
       sqlite.close();
     }
@@ -466,8 +543,8 @@ test("Ruby, clearance, and seniority gaps retain a low-fit review while producin
       assert.match(tailored.variant.fitAssessment?.gaps.join(" ") ?? "", /clearance/i);
       assert.match(tailored.variant.fitAssessment?.gaps.join(" ") ?? "", /years|senior/i);
       assert.match(tailored.variant.fitAssessment?.summary ?? "", /requirements are not documented/i);
-      assert.equal(tailored.variant.resumeJson.headline, "Senior Ruby Platform Engineer");
-      assert.match(tailored.variant.resumeJson.summary ?? "", /Relevant stack for this Senior Ruby Platform Engineer role/i);
+      assert.equal(tailored.variant.resumeJson.headline, "Full-Stack Software Engineer");
+      assert.match(tailored.variant.resumeJson.summary ?? "", /Relevant stack for this Full-Stack Software Engineer role/i);
       assert.match(tailored.variant.resumeJson.summary ?? "", /TypeScript/i);
       assert.match(tailored.variant.coverLetter ?? "", /Senior Ruby Platform Engineer/);
       assert.match(tailored.variant.coverLetter ?? "", /Customer Portal|Workflow API|Old Co/);
