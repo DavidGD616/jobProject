@@ -25,7 +25,11 @@ export {
 export type { DueSourcePoll } from "./source-polls";
 export type { JobHuntDatabase } from "./types";
 export { getExtractionRule, recordExtractionResult, saveExtractionRule, shouldRegenerateRule } from "./extraction-rules";
-export { updateResumeVariantCoverLetter } from "./resume-variants";
+export {
+  clearAllResumeVariants,
+  updateResumeVariantCoverLetter,
+} from "./resume-variants";
+export type { ClearedResumeVariant } from "./resume-variants";
 export {
   claimNextTailorRequest,
   completeTailorRequest,
