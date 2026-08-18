@@ -92,6 +92,7 @@ export async function triageAction(formData: FormData): Promise<void> {
     reason: text(formData, "reason") || null,
     database: db,
   });
+  if (decision === "interested") redirect(`/jobs/${jobId}?interested=1`);
   redirect("/review?saved=1");
 }
 
