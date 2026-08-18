@@ -225,7 +225,7 @@ function MaterialChanges({ variant, job, profile }: { variant: ResumeVariant; jo
           <h3 className="mt-1 font-serif text-xl font-semibold tracking-[-0.03em] text-[var(--ink)]" id={`changes-${variant.id}`}>What changed for this role</h3>
           <p className="mt-1 max-w-3xl text-xs leading-5 text-[var(--muted)]">The material below only uses saved facts. Your past employer titles are not renamed.</p>
         </div>
-        <span className={readiness.className}>{readiness.label}</span>
+        <span className={`${readiness.className} self-start`}>{readiness.label}</span>
       </div>
 
       {needsRefresh || needsFitReview || !fit ? (
@@ -274,7 +274,7 @@ function MaterialChanges({ variant, job, profile }: { variant: ResumeVariant; jo
         </div>
 
         <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--ink)_10%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_72%,transparent)] p-4">
-          <div className="flex items-baseline justify-between gap-3">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
             <p className="text-xs font-semibold text-[var(--ink)]">Evidence selected for this role</p>
             {fit ? <span className="text-xs font-semibold text-[var(--muted)]">{fit.evidenceCount} recorded</span> : null}
           </div>
@@ -282,8 +282,8 @@ function MaterialChanges({ variant, job, profile }: { variant: ResumeVariant; jo
             <ol className="mt-3 grid gap-2.5">
               {evidence.map((item, index) => (
                 <li className="rounded-lg border border-[color:color-mix(in_srgb,var(--ink)_8%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_70%,transparent)] px-3 py-2.5" key={`${item.requirement}-${item.source}-${item.label}-${index}`}>
-                  <p className="text-xs font-semibold text-[var(--ink)]">{item.requirement}</p>
-                  <p className="mt-1 text-xs leading-5 text-[var(--ink-soft)]"><span className="font-semibold text-[var(--rust)]">{evidenceSourceLabel(item.source)}</span> · {item.label}</p>
+                  <p className="break-words text-xs font-semibold text-[var(--ink)]">{item.requirement}</p>
+                  <p className="mt-1 break-words text-xs leading-5 text-[var(--ink-soft)]"><span className="font-semibold text-[var(--rust)]">{evidenceSourceLabel(item.source)}</span> · {item.label}</p>
                 </li>
               ))}
             </ol>
@@ -323,7 +323,7 @@ function MaterialChanges({ variant, job, profile }: { variant: ResumeVariant; jo
                         <p className="text-xs font-semibold text-[var(--rust)]">{review.source.company}</p>
                         <p className="mt-0.5 text-sm font-semibold leading-5 text-[var(--ink)]">{review.source.title}</p>
                       </div>
-                      <span className={status.className}>{status.label}</span>
+                      <span className={`${status.className} self-start sm:self-auto`}>{status.label}</span>
                     </div>
                     <dl className="mt-3 grid gap-2 text-xs leading-5 sm:grid-cols-2">
                       <div>
@@ -360,7 +360,7 @@ function MaterialChanges({ variant, job, profile }: { variant: ResumeVariant; jo
                     <span aria-hidden="true" className="grid size-6 shrink-0 place-items-center rounded-full bg-[color:color-mix(in_srgb,var(--rust)_10%,transparent)] text-[0.68rem] font-bold text-[var(--rust)]">{tailoredIndex >= 0 ? tailoredIndex + 1 : "—"}</span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-[var(--ink)]">{project.name}</p>
+                        <p className="break-words text-sm font-semibold text-[var(--ink)]">{project.name}</p>
                         {project.featured ? <span className={positiveTag}>Featured · shown first</span> : null}
                       </div>
                       <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Profile position {sourceIndex + 1}{project.completedAt ? ` · completed ${project.completedAt}` : ""}</p>
@@ -375,9 +375,9 @@ function MaterialChanges({ variant, job, profile }: { variant: ResumeVariant; jo
       </div>
 
       <dl className="mt-4 grid gap-2 border-t border-[color:color-mix(in_srgb,var(--ink)_10%,transparent)] pt-4 text-xs leading-5 text-[var(--muted)] sm:grid-cols-3">
-        <div><dt className="font-semibold text-[var(--ink-soft)]">Profile</dt><dd>{freshnessLabel(freshness.profile, `Version ${variant.profileVersion} · current`, "Changed since this draft")}</dd></div>
-        <div><dt className="font-semibold text-[var(--ink-soft)]">Job source</dt><dd>{freshnessLabel(freshness.job, "Current when prepared", "Changed since this draft")}</dd></div>
-        <div><dt className="font-semibold text-[var(--ink-soft)]">Tailoring rules</dt><dd>{variant.promptVersion ? `Version ${variant.promptVersion}` : "Not recorded for this older material set"}</dd></div>
+        <div className="min-w-0"><dt className="font-semibold text-[var(--ink-soft)]">Profile</dt><dd className="break-words">{freshnessLabel(freshness.profile, `Version ${variant.profileVersion} · current`, "Changed since this draft")}</dd></div>
+        <div className="min-w-0"><dt className="font-semibold text-[var(--ink-soft)]">Job source</dt><dd className="break-words">{freshnessLabel(freshness.job, "Current when prepared", "Changed since this draft")}</dd></div>
+        <div className="min-w-0"><dt className="font-semibold text-[var(--ink-soft)]">Tailoring rules</dt><dd className="break-words">{variant.promptVersion ? `Version ${variant.promptVersion}` : "Not recorded for this older material set"}</dd></div>
       </dl>
     </section>
   );
@@ -389,7 +389,7 @@ export default async function TailorPage({ searchParams }: TailorPageProps) {
   const query = await searchParams;
 
   return (
-    <main className="min-h-screen px-3 py-3 sm:px-6 sm:py-6 lg:px-10 lg:py-8" id="main-content">
+    <main className="min-h-screen px-2 py-2 sm:px-6 sm:py-6 lg:px-10 lg:py-8" id="main-content">
       <div className={workspaceShell}>
         <AppNav />
 
@@ -397,17 +397,17 @@ export default async function TailorPage({ searchParams }: TailorPageProps) {
           <div className="relative grid gap-7 lg:grid-cols-[minmax(0,1fr)_23rem] lg:items-end">
             <div>
               <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--paper)_72%,transparent)]">Step 5 of 6 · Prepare your materials</p>
-              <h1 className="mt-3 max-w-3xl font-serif text-4xl font-semibold leading-[0.98] tracking-[-0.05em] sm:text-5xl">Make each application easier to recognize.</h1>
+              <h1 className="mt-3 max-w-3xl font-serif text-[2rem] font-semibold leading-[1.02] tracking-[-0.05em] min-[380px]:text-4xl sm:text-5xl">Make each application easier to recognize.</h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-[color:color-mix(in_srgb,var(--paper)_72%,transparent)] sm:text-base">Create a role-specific resume and cover letter from the facts you have already saved, then review every word before you use it.</p>
             </div>
-            <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--paper)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_8%,transparent)] p-5">
+            <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--paper)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_8%,transparent)] p-4 sm:p-5">
               <p className="text-sm font-semibold text-[var(--paper)]">Your Harvard resume design stays exactly the same.</p>
               <p className="mt-2 text-xs leading-5 text-[color:color-mix(in_srgb,var(--paper)_68%,transparent)]">This process only uses true evidence from your profile. It can adapt the professional headline and summary, but it does not invent accomplishments, rename past roles, or redesign the document.</p>
             </div>
           </div>
         </header>
 
-        <div className="px-5 py-7 sm:px-8 lg:px-10 lg:py-9">
+        <div className="px-4 py-6 sm:px-8 sm:py-7 lg:px-10 lg:py-9">
           <div aria-live="polite" className="grid gap-3">
             {query.queued ? <p className={notice}>This role is ready for materials preparation. In a local terminal, run <code className="rounded bg-white/60 px-1.5 py-0.5 text-xs">pnpm tailor -- --next</code>, then return here to review the draft.</p> : null}
             {query.letter_saved ? <p className={notice}>Your cover letter edits were saved to the current material set.</p> : null}
@@ -418,7 +418,7 @@ export default async function TailorPage({ searchParams }: TailorPageProps) {
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_23rem] lg:items-end">
               <div>
                 <p className="text-sm font-semibold text-[var(--rust)]">Your materials</p>
-                <h2 className="mt-1 font-serif text-3xl font-semibold tracking-[-0.04em] text-[var(--ink)]" id="materials-heading">One role, one focused review.</h2>
+                <h2 className="mt-1 font-serif text-[1.75rem] font-semibold leading-[1.05] tracking-[-0.04em] text-[var(--ink)] sm:text-3xl" id="materials-heading">One role, one focused review.</h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">Start with a tracked application. Queue it, prepare it locally, then open the PDF and letter to make the final call.</p>
               </div>
               <WorkflowCallout eyebrow="Three simple steps" title="Prepare with intent" tone="signal">
@@ -454,10 +454,10 @@ export default async function TailorPage({ searchParams }: TailorPageProps) {
                               <span className={tag}>{application.status.replace(/\b\w/g, (letter) => letter.toUpperCase())} application</span>
                               {latestVariant && latestReadiness ? <span className={latestReadiness.className}>{latestReadiness.label}</span> : latestRequest ? <span className={requestClass(latestRequest.status)}>{requestLabel(latestRequest.status)}</span> : <span className={tag}>No materials yet</span>}
                             </div>
-                            <Link className="mt-3 block font-serif text-2xl font-semibold tracking-[-0.035em] text-[var(--ink)] transition hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rust)]" href={`/jobs/${application.job.id}`}>{application.job.title}</Link>
+                            <Link className="mt-3 block break-words font-serif text-2xl font-semibold tracking-[-0.035em] text-[var(--ink)] transition hover:text-[var(--rust)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rust)]" href={`/jobs/${application.job.id}`}>{application.job.title}</Link>
                             <p className="mt-1 text-sm font-semibold text-[var(--ink-soft)]">{displayCompanyName(application.company.name)}</p>
                           </div>
-                          <Link className={`${secondaryButton} shrink-0`} href={`/jobs/${application.job.id}`}>Read role</Link>
+                          <Link className={`${secondaryButton} w-full shrink-0 sm:w-auto`} href={`/jobs/${application.job.id}`}>Read role</Link>
                         </div>
 
                         <div className="mt-5 grid gap-5 border-t border-[color:color-mix(in_srgb,var(--ink)_10%,transparent)] pt-5 lg:grid-cols-[minmax(0,1fr)_minmax(19rem,0.65fr)]">
@@ -479,16 +479,16 @@ export default async function TailorPage({ searchParams }: TailorPageProps) {
                                   : "Queue this role when you want a focused, fact-based first draft."}
                             </p>
 
-                            <div className="mt-5 flex flex-wrap items-center gap-3">
+                            <div className="mt-5 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                               {activeRequest ? (
                                 <>
                                   <span className={requestClass(activeRequest.status)} aria-live="polite">{requestLabel(activeRequest.status)}</span>
-                                  {activeRequest.status === "queued" ? <code className="rounded-lg border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_70%,transparent)] px-3 py-2 text-xs text-[var(--ink)]">pnpm tailor -- --next</code> : null}
+                                  {activeRequest.status === "queued" ? <code className="max-w-full break-words rounded-lg border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_70%,transparent)] px-3 py-2 text-xs text-[var(--ink)]">pnpm tailor -- --next</code> : null}
                                 </>
                               ) : (
-                                <form action={queueTailorVariantAction}>
+                                <form action={queueTailorVariantAction} className="w-full sm:w-auto">
                                   <input name="job_id" type="hidden" value={application.job.id} />
-                                  <button className={primaryButton} type="submit">Prepare materials</button>
+                                  <button className={`${primaryButton} w-full sm:w-auto`} type="submit">Prepare materials</button>
                                 </form>
                               )}
                               {latestVariant ? <Link className={`text-sm ${textLink}`} href="/apply">{latestNeedsRefresh || latestNeedsFitReview ? "Review form prep after this" : "Go to form prep"}</Link> : null}
@@ -505,12 +505,12 @@ export default async function TailorPage({ searchParams }: TailorPageProps) {
                           <section className="rounded-2xl border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_64%,transparent)] p-4" aria-label={`Latest materials for ${application.job.title}`}>
                             {latestVariant ? (
                               <>
-                                <div className="flex items-start justify-between gap-3">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                                   <div>
                                     <p className="text-xs font-semibold text-[var(--rust)]">Latest material set</p>
                                     <p className="mt-1 text-sm font-semibold text-[var(--ink)]">Prepared {dateLabel(latestVariant.createdAt)}</p>
                                   </div>
-                                  {latestReadiness ? <span className={latestReadiness.className}>{latestReadiness.label}</span> : null}
+                                  {latestReadiness ? <span className={`${latestReadiness.className} self-start`}>{latestReadiness.label}</span> : null}
                                 </div>
                                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                                   <a className={`${primaryButton} w-full`} href={`/api/exports/${latestVariant.id}?format=pdf`}>Open resume PDF</a>
@@ -568,10 +568,10 @@ export default async function TailorPage({ searchParams }: TailorPageProps) {
                 })}
               </ol>
             ) : (
-              <div className="mt-6 grid min-h-[360px] place-items-center rounded-3xl border border-dashed border-[color:color-mix(in_srgb,var(--ink)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_70%,transparent)] px-6 py-12 text-center">
+              <div className="mt-6 grid min-h-[320px] place-items-center rounded-3xl border border-dashed border-[color:color-mix(in_srgb,var(--ink)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_70%,transparent)] px-5 py-10 text-center sm:min-h-[360px] sm:px-6 sm:py-12">
                 <div className="max-w-xl">
                   <p className="text-sm font-semibold text-[var(--rust)]">No saved applications yet</p>
-                  <h3 className="mt-2 font-serif text-3xl font-semibold tracking-[-0.04em] text-[var(--ink)]">Choose a role before creating its materials.</h3>
+                  <h3 className="mt-2 font-serif text-[1.75rem] font-semibold leading-[1.05] tracking-[-0.04em] text-[var(--ink)] sm:text-3xl">Choose a role before creating its materials.</h3>
                   <p className="mt-3 text-sm leading-6 text-[var(--muted)]">Saving a role creates a draft application. That gives every resume and letter a clear role to serve.</p>
                   <Link className={`${primaryButton} mt-6`} href="/review">Look through my matches</Link>
                 </div>

@@ -35,7 +35,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
   const priorityProjects = profile.resumeJson.projects ?? [];
 
   return (
-    <main className="min-h-screen px-3 py-3 sm:px-6 sm:py-6 lg:px-10 lg:py-8" id="main-content">
+    <main className="min-h-screen px-2 py-2 sm:px-6 sm:py-6 lg:px-10 lg:py-8" id="main-content">
       <div className={`${workspaceShell} max-w-[1240px]`}>
         <AppNav />
 
@@ -43,17 +43,17 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
           <div className="relative grid gap-7 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
             <div>
               <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--paper)_72%,transparent)]">Step 1 of 6 · Set up your profile</p>
-              <h1 className="mt-3 max-w-3xl font-serif text-4xl font-semibold leading-[0.98] tracking-[-0.05em] sm:text-5xl">Give your search a truthful point of view.</h1>
+              <h1 className="mt-3 max-w-3xl font-serif text-[2rem] font-semibold leading-[1.02] tracking-[-0.05em] min-[380px]:text-4xl sm:text-5xl">Give your search a truthful point of view.</h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-[color:color-mix(in_srgb,var(--paper)_72%,transparent)] sm:text-base">Your profile tells this workspace what you have done and what you are looking for. It powers your matches and keeps your materials grounded in real experience.</p>
             </div>
-            <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--paper)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_8%,transparent)] p-5">
+            <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--paper)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_8%,transparent)] p-4 sm:p-5">
               <p className="text-sm font-semibold text-[var(--paper)]">Profile version {profile.version}</p>
               <p className="mt-2 text-xs leading-5 text-[color:color-mix(in_srgb,var(--paper)_68%,transparent)]">When you save, new matches will use these facts and preferences. Nothing here is shared or submitted.</p>
             </div>
           </div>
         </header>
 
-        <div className="px-5 py-7 sm:px-8 lg:px-10 lg:py-9">
+        <div className="px-4 py-6 sm:px-8 sm:py-7 lg:px-10 lg:py-9">
           <div aria-live="polite" className="grid gap-3">
             {query.saved ? <p className={notice}>Your profile was saved. Your next step is to refresh Matches when you are ready.</p> : null}
             {query.error ? <p className={errorNotice} role="alert">{query.error}</p> : null}
@@ -62,7 +62,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
           <div className="mt-7 grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
             <div>
               <p className="text-sm font-semibold text-[var(--rust)]">Start with what is true</p>
-              <h2 className="mt-1 font-serif text-3xl font-semibold tracking-[-0.04em] text-[var(--ink)]">A good profile makes every later choice easier.</h2>
+              <h2 className="mt-1 font-serif text-[1.75rem] font-semibold leading-[1.05] tracking-[-0.04em] text-[var(--ink)] sm:text-3xl">A good profile makes every later choice easier.</h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">Use real skills, experience, and boundaries. The workspace does not make up claims to improve a match or a resume.</p>
             </div>
             <WorkflowCallout eyebrow="What this changes" title="Three useful outcomes" tone="signal">
@@ -74,12 +74,12 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
             </WorkflowCallout>
           </div>
 
-          <form action={saveProfileAction} className="mt-8 grid gap-7">
+          <form action={saveProfileAction} className="mt-7 grid gap-6 sm:mt-8 sm:gap-7">
             <section className={card} aria-labelledby="about-you-heading">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-[var(--rust)]">About you</p>
-                  <h2 className="mt-1 font-serif text-2xl font-semibold tracking-[-0.035em] text-[var(--ink)]" id="about-you-heading">The details that travel with every application</h2>
+                  <h2 className="mt-1 font-serif text-xl font-semibold leading-tight tracking-[-0.035em] text-[var(--ink)] sm:text-2xl" id="about-you-heading">The details that travel with every application</h2>
                 </div>
                 <span className={tag}>Private and local</span>
               </div>
@@ -97,7 +97,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
             <section className={card} aria-labelledby="search-language-heading">
               <div>
                 <p className="text-sm font-semibold text-[var(--rust)]">How you describe your work</p>
-                <h2 className="mt-1 font-serif text-2xl font-semibold tracking-[-0.035em] text-[var(--ink)]" id="search-language-heading">Help the workspace recognize relevant roles</h2>
+                <h2 className="mt-1 font-serif text-xl font-semibold leading-tight tracking-[-0.035em] text-[var(--ink)] sm:text-2xl" id="search-language-heading">Help the workspace recognize relevant roles</h2>
                 <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Separate entries with commas. Use words that appear in real job descriptions or titles you would genuinely consider.</p>
               </div>
               <div className="mt-6 grid gap-5">
@@ -117,7 +117,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
             <section className={card} aria-labelledby="preferences-heading">
               <div>
                 <p className="text-sm font-semibold text-[var(--rust)]">What you want</p>
-                <h2 className="mt-1 font-serif text-2xl font-semibold tracking-[-0.035em] text-[var(--ink)]" id="preferences-heading">Set the boundaries that make a role worth seeing</h2>
+                <h2 className="mt-1 font-serif text-xl font-semibold leading-tight tracking-[-0.035em] text-[var(--ink)] sm:text-2xl" id="preferences-heading">Set the boundaries that make a role worth seeing</h2>
                 <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Leave a field empty if you are flexible. These are preferences, not promises about any individual job listing.</p>
               </div>
               <div className="mt-6 grid gap-5 sm:grid-cols-2">
@@ -147,38 +147,38 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-[var(--rust)]">Your full experience</p>
-                  <h2 className="mt-1 font-serif text-2xl font-semibold tracking-[-0.035em] text-[var(--ink)]" id="resume-data-heading">The factual source for your resume materials</h2>
+                  <h2 className="mt-1 font-serif text-xl font-semibold leading-tight tracking-[-0.035em] text-[var(--ink)] sm:text-2xl" id="resume-data-heading">The factual source for your resume materials</h2>
                 </div>
                 <span className={tag}>Advanced</span>
               </div>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--muted)]">This structured resume data is the source for all role-specific materials. Keep every bullet truthful; the app can reorder saved facts, but it will not create new ones. Projects can also include an optional <code>bullets</code> array for their concrete proof points.</p>
               <input name="featured_projects_present" type="hidden" value="1" />
-              <fieldset className="mt-5 rounded-xl border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_62%,transparent)] p-4">
+              <fieldset className="mt-5 rounded-xl border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_62%,transparent)] p-3.5 sm:p-4">
                 <legend className="px-1 text-sm font-semibold text-[var(--ink)]">Feature the work you want to lead with</legend>
                 <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Choose the project or projects you want treated as featured in tailored resumes. One is usually enough; featured work is placed before role-specific supporting projects.</p>
                 {priorityProjects.length > 0 ? (
                   <div className="mt-3 grid gap-2">
                     {priorityProjects.map((project, index) => (
-                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[color:color-mix(in_srgb,var(--ink)_10%,transparent)] bg-[var(--paper)] px-3 py-3 text-sm text-[var(--ink-soft)]" key={`${project.name}-${index}`}>
+                      <label className="flex w-full cursor-pointer items-start gap-3 rounded-lg border border-[color:color-mix(in_srgb,var(--ink)_10%,transparent)] bg-[var(--paper)] px-3 py-3 text-sm text-[var(--ink-soft)]" key={`${project.name}-${index}`}>
                         <input className="mt-0.5 size-4 shrink-0 accent-[var(--rust)]" defaultChecked={Boolean(project.featured)} name="featured_projects" type="checkbox" value={project.name} />
-                        <span><span className="font-semibold text-[var(--ink)]">{project.name}</span><span className="mt-0.5 block text-xs leading-5 text-[var(--muted)]">{project.featured ? "Featured now · shown first when relevant" : "Available as a role-specific supporting project"}</span></span>
+                        <span className="min-w-0 flex-1"><span className="break-words font-semibold text-[var(--ink)]">{project.name}</span><span className="mt-0.5 block break-words text-xs leading-5 text-[var(--muted)]">{project.featured ? "Featured now · shown first when relevant" : "Available as a role-specific supporting project"}</span></span>
                       </label>
                     ))}
                   </div>
                 ) : <p className="mt-3 rounded-lg bg-[color:color-mix(in_srgb,var(--ink)_4%,transparent)] px-3 py-2.5 text-xs leading-5 text-[var(--muted)]">Add a project in the structured resume data below, then you can select it here.</p>}
               </fieldset>
-              <details className="mt-5 rounded-xl border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_62%,transparent)] p-4">
+              <details className="mt-5 rounded-xl border border-[color:color-mix(in_srgb,var(--ink)_12%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_62%,transparent)] p-3.5 sm:p-4">
                 <summary className="cursor-pointer text-sm font-semibold text-[var(--ink)]">View or edit structured resume data</summary>
                 <p className="mt-2 text-xs leading-5 text-[var(--muted)]">This needs valid JSON. If you do not need to change your experience, you can leave it closed. The selection above manages <code>featured</code> for existing projects; if you edit JSON directly, use <code>&quot;featured&quot;: true</code> only for a project you genuinely want to lead with. You can optionally record a known completion month as <code>&quot;completedAt&quot;: &quot;YYYY-MM&quot;</code>; the app never guesses that date.</p>
-                <textarea aria-label="Structured resume JSON" className={`${field} mt-4 min-h-[28rem] resize-y font-mono text-xs leading-5`} defaultValue={JSON.stringify(profile.resumeJson, null, 2)} name="resume_json" />
+                <textarea aria-label="Structured resume JSON" className={`${field} mt-4 min-h-[22rem] resize-y font-mono text-xs leading-5 sm:min-h-[28rem]`} defaultValue={JSON.stringify(profile.resumeJson, null, 2)} name="resume_json" />
               </details>
             </section>
 
-            <div className="sticky bottom-4 flex flex-col gap-4 rounded-2xl border border-[color:color-mix(in_srgb,var(--ink)_14%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_92%,transparent)] p-4 shadow-[0_12px_30px_rgba(17,34,55,0.12)] sm:flex-row sm:items-center sm:justify-between">
+            <div className="static flex flex-col gap-4 rounded-2xl border border-[color:color-mix(in_srgb,var(--ink)_14%,transparent)] bg-[color:color-mix(in_srgb,var(--paper)_92%,transparent)] p-4 shadow-[0_12px_30px_rgba(17,34,55,0.12)] sm:sticky sm:bottom-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm leading-6 text-[var(--ink-soft)]">Ready when the facts and preferences above feel like you.</p>
-              <div className="flex flex-wrap gap-3">
-                <Link className={secondaryButton} href="/review">View my matches</Link>
-                <button className={primaryButton} type="submit">Save profile</button>
+              <div className="grid gap-2 sm:flex sm:flex-wrap sm:gap-3">
+                <Link className={`${secondaryButton} w-full sm:w-auto`} href="/review">View my matches</Link>
+                <button className={`${primaryButton} w-full sm:w-auto`} type="submit">Save profile</button>
               </div>
             </div>
           </form>
