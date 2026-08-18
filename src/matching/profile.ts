@@ -24,8 +24,10 @@ export const resumeProfileSchema = z.object({
   email: z.string().trim().optional(),
   phone: z.string().trim().optional(),
   location: z.string().trim().optional(),
+  portfolioUrl: z.string().trim().url().optional(),
   headline: z.string().trim().optional(),
   summary: z.string().trim().optional(),
+  interests: z.array(z.string().trim().min(1)).default([]),
   experience: z.array(experienceSchema).default([]),
   education: z.array(z.object({
     school: z.string().trim().min(1),

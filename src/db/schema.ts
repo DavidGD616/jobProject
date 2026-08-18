@@ -201,8 +201,10 @@ export type ResumeProfileJson = {
   email?: string;
   phone?: string;
   location?: string;
+  portfolioUrl?: string;
   headline?: string;
   summary?: string;
+  interests?: string[];
   experience?: Array<{
     company: string;
     title: string;

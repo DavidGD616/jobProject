@@ -40,6 +40,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
                 <label className="ledger-field"><span>Email</span><input className="ledger-control" defaultValue={profile.resumeJson.email ?? ""} name="email" type="email" placeholder="you@example.com" /></label>
                 <label className="ledger-field"><span>Phone</span><input className="ledger-control" defaultValue={profile.resumeJson.phone ?? ""} name="phone" placeholder="Optional" /></label>
                 <label className="ledger-field"><span>Location</span><input className="ledger-control" defaultValue={profile.resumeJson.location ?? ""} name="location" placeholder="City, region" /></label>
+                <label className="ledger-field sm:col-span-2"><span>Portfolio URL</span><input className="ledger-control" defaultValue={profile.resumeJson.portfolioUrl ?? ""} name="portfolioUrl" type="url" placeholder="https://your-site.example" /></label>
                 <label className="ledger-field sm:col-span-2"><span>Headline</span><input className="ledger-control" defaultValue={profile.resumeJson.headline ?? ""} name="headline" placeholder="Senior product engineer focused on reliable systems" /></label>
                 <label className="ledger-field sm:col-span-2"><span>Summary</span><textarea className="ledger-control min-h-28" defaultValue={profile.resumeJson.summary ?? ""} name="summary" placeholder="A concise, factual summary." /></label>
               </div>

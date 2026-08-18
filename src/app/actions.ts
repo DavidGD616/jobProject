@@ -37,7 +37,7 @@ export async function saveProfileAction(formData: FormData): Promise<void> {
   try {
     const current = ensureActiveProfile(db);
     const resumeJson = parseJson(formData, "resume_json", current.resumeJson) as Record<string, unknown>;
-    for (const key of ["name", "email", "phone", "location", "headline", "summary"]) {
+    for (const key of ["name", "email", "phone", "location", "portfolioUrl", "headline", "summary"]) {
       const value = text(formData, key);
       if (value) resumeJson[key] = value;
       else delete resumeJson[key];
